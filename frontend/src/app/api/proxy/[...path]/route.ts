@@ -13,17 +13,24 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
   }
   const hasBody = request.method !== "GET" && request.method !== "HEAD";
   try {
+    const isGet = request.method === "GET" || request.method === "HEAD";
+    const isLocations = path.length === 1 && path[0] === "locations";
+    const revalidateSeconds = isLocations ? 3600 : 60;
     const response = await fetch(target, {
       method: request.method,
       headers,
       body: hasBody ? await request.text() : undefined,
-      cache: "no-store",
+      next: isGet ? { revalidate: revalidateSeconds } : undefined,
+      cache: isGet ? undefined : "no-store",
     });
     const body = await response.text();
     return new NextResponse(body, {
       status: response.status,
       headers: {
         "content-type": response.headers.get("content-type") || "application/json",
+        "cache-control": isGet
+          ? `public, s-maxage=${revalidateSeconds}, stale-while-revalidate=300`
+          : "no-store",
       },
     });
   } catch (error) {
