@@ -12,10 +12,11 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   if (init?.body && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
+  const isGet = !init?.method || init.method.toUpperCase() === "GET";
   const response = await fetch(`/api/proxy/${path.replace(/^\//, "")}`, {
     ...init,
     headers,
-    cache: "no-store",
+    cache: isGet ? "default" : "no-store",
   });
   const text = await response.text();
   const payload = text ? (JSON.parse(text) as { error?: { message?: string } }) : null;

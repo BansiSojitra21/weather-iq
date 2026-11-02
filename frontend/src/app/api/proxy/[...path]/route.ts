@@ -15,7 +15,7 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
   try {
     const isGet = request.method === "GET" || request.method === "HEAD";
     const isLocations = path.length === 1 && path[0] === "locations";
-    const revalidateSeconds = isLocations ? 3600 : 60;
+    const revalidateSeconds = isLocations ? 86400 : 300;
     const response = await fetch(target, {
       method: request.method,
       headers,
@@ -24,13 +24,14 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
       cache: isGet ? undefined : "no-store",
     });
     const body = await response.text();
+    const cacheControl = `public, max-age=${revalidateSeconds}, s-maxage=${revalidateSeconds}, stale-while-revalidate=86400`;
     return new NextResponse(body, {
       status: response.status,
       headers: {
         "content-type": response.headers.get("content-type") || "application/json",
-        "cache-control": isGet
-          ? `public, s-maxage=${revalidateSeconds}, stale-while-revalidate=300`
-          : "no-store",
+        "cache-control": isGet ? cacheControl : "no-store",
+        "cdn-cache-control": isGet ? cacheControl : "no-store",
+        "vercel-cdn-cache-control": isGet ? cacheControl : "no-store",
       },
     });
   } catch (error) {

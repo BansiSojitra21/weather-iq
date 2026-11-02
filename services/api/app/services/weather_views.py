@@ -187,7 +187,7 @@ def current_payload(session: Session, location: Location, units: str) -> dict:
         "observation": observation,
         "today_forecast": today,
         "hourly": hourly,
-        "daily": daily,
+        "daily": daily[:7],
         "recent_alerts": [alert_out(item, names.get(item.location_id)) for item in alerts],
         "recent_anomalies": [anomaly_out(item, names.get(item.location_id)) for item in anomalies],
         "freshness": {"retrieved_at": isoformat(retrieved_at), "age_seconds": age, "stale": stale},

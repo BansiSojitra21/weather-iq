@@ -402,7 +402,7 @@ def forecast_url(latitude: float, longitude: float) -> str:
             ),
             "hourly": ",".join(FORECAST_HOURLY),
             "daily": ",".join(FORECAST_DAILY),
-            "forecast_days": 7,
+            "forecast_days": 14,
             "past_days": 0,
             "timezone": "UTC",
         },
