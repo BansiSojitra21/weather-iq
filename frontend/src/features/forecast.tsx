@@ -77,16 +77,32 @@ function MetricCard({
 }
 
 export function ForecastPage() {
-  const { locationId, units, timeZone } = useDashboard();
+  const { locationId, units, timeZone, location } = useDashboard();
   const [horizon, setHorizon] = useState<number>(1);
+  const tempCacheKey = `weatheriq.cache.predict-temperature.${locationId}.${units}`;
   const temperature = useQuery({
     queryKey: ["predict-temperature", locationId, units],
     enabled: locationId != null,
-    queryFn: () =>
-      api<TemperatureResponse>("predictions/temperature", {
+    queryFn: async () => {
+      const res = await api<TemperatureResponse>("predictions/temperature", {
         method: "POST",
         body: JSON.stringify({ location_id: locationId, horizons: [...HORIZONS], units }),
-      }),
+      });
+      try {
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem(tempCacheKey, JSON.stringify(res));
+        }
+      } catch {}
+      return res;
+    },
+    initialData: () => {
+      if (typeof window === "undefined" || !locationId) return undefined;
+      try {
+        const stored = window.localStorage.getItem(tempCacheKey);
+        if (stored) return JSON.parse(stored) as TemperatureResponse;
+      } catch {}
+      return undefined;
+    },
   });
   const weather = useQuery({
     queryKey: ["current", locationId, units],
@@ -120,35 +136,36 @@ export function ForecastPage() {
 
   return (
     <div className="space-y-5">
-      <header className="flex flex-wrap items-end justify-between gap-4">
+      <header className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <Badge tone="accent">Forecast outlook</Badge>
-          <h1 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">See what the next days may bring</h1>
+          <div className="flex items-center gap-2">
+            <Badge tone="accent">Forecast outlook</Badge>
+            <span className="text-xs text-muted-foreground">
+              {location?.name ? `${location.name} · ` : ""}Target: <span className="font-medium text-foreground">{selected ? formatWhen(selected.target_time, timeZone) : "Unavailable"}</span>
+            </span>
+          </div>
+          <h1 className="mt-1.5 text-2xl font-semibold tracking-tight sm:text-3xl">See what the next days may bring</h1>
           <p className="mt-1 text-sm text-muted-foreground">Explore the model estimate, daily outlook, and the evidence behind each lead time.</p>
         </div>
-        <p className="text-sm text-muted-foreground">
-          {selected ? formatWhen(selected.target_time, timeZone) : "Forecast date unavailable"}
-        </p>
+        <div className="flex shrink-0 items-center gap-1.5 rounded-full border border-border bg-muted/60 p-1" role="group" aria-label="Forecast horizon">
+          <span className="pl-3 pr-1 text-xs font-medium text-muted-foreground">Look ahead</span>
+          {HORIZONS.map((days) => (
+            <button
+              key={days}
+              type="button"
+              aria-pressed={horizon === days}
+              onClick={() => setHorizon(days)}
+              className={`rounded-full px-3.5 py-1.5 text-xs font-semibold transition-all ${
+                horizon === days
+                  ? "bg-accent text-white shadow-sm"
+                  : "text-foreground/75 hover:bg-white hover:text-foreground"
+              }`}
+            >
+              {days} day{days === 1 ? "" : "s"}
+            </button>
+          ))}
+        </div>
       </header>
-
-      <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Forecast horizon">
-        <span className="mr-1 text-sm font-medium">Look ahead</span>
-        {HORIZONS.map((days) => (
-          <button
-            key={days}
-            type="button"
-            aria-pressed={horizon === days}
-            onClick={() => setHorizon(days)}
-            className={`rounded-full border px-4 py-2 text-sm font-medium transition-colors ${
-              horizon === days
-                ? "border-accent bg-accent text-white"
-                : "border-border bg-white text-foreground hover:bg-muted"
-            }`}
-          >
-            {days} day{days === 1 ? "" : "s"}
-          </button>
-        ))}
-      </div>
 
       {selected ? (
         <>
