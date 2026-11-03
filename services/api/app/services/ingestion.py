@@ -361,11 +361,31 @@ def current_snapshot_state(session: Session, location: Location) -> tuple[bool, 
     if latest is None:
         return False, True
     now = datetime.now(timezone.utc)
+    max_age = timedelta(minutes=get_settings().cache_ttl_minutes)
     retrieved = as_utc(latest.retrieved_at)
-    refresh = now - retrieved > timedelta(minutes=get_settings().cache_ttl_minutes)
+    refresh = now - retrieved > max_age
     if not refresh:
         zone = _location_zone(location)
         refresh = retrieved.astimezone(zone).date() < now.astimezone(zone).date()
+    if not refresh:
+        for model_name, granularity in (("forecast-hourly", "hourly"), ("forecast-daily", "daily")):
+            run = (
+                session.query(ForecastRun)
+                .filter_by(location_id=location.id, provider="open-meteo", model_name=model_name)
+                .one_or_none()
+            )
+            if run is None or now - as_utc(run.retrieved_at) > max_age:
+                refresh = True
+                break
+            has_values = (
+                session.query(ForecastValue.id)
+                .filter_by(run_id=run.id, granularity=granularity)
+                .first()
+                is not None
+            )
+            if not has_values:
+                refresh = True
+                break
     return True, refresh
 
 

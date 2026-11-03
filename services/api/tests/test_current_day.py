@@ -43,6 +43,40 @@ def test_stale_snapshot_is_returned_while_refresh_runs_in_background(client, dat
     assert updated.temperature_c == 33.4
 
 
+def test_missing_forecast_is_refreshed_when_current_snapshot_is_fresh(client, database, monkeypatch):
+    location = database.query(Location).filter_by(name="Mumbai").one()
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    database.add(
+        CurrentCondition(
+            location_id=location.id,
+            observed_at=now,
+            temperature_c=31.8,
+            weather_code=0,
+            provider="open-meteo",
+            retrieved_at=now,
+        )
+    )
+    database.commit()
+    refreshes = []
+
+    def fake_ingest(session, loc, **kwargs):
+        assert loc.id == location.id
+        assert kwargs["kinds"] == {"current", "forecast"}
+        refreshes.append(loc.id)
+        row = session.query(CurrentCondition).filter_by(location_id=loc.id).one()
+        row.temperature_c = 33.4
+        session.flush()
+        return {"records": 1}
+
+    monkeypatch.setattr("app.services.ingestion.ingest_location", fake_ingest)
+    response = client.get("/api/v1/weather/current", params={"location_id": location.id})
+
+    assert response.status_code == 200
+    assert response.json()["observation"]["temperature"] == 31.8
+    assert refreshes == [location.id]
+    assert database.query(CurrentCondition).filter_by(location_id=location.id).one().temperature_c == 33.4
+
+
 def test_current_weather_uses_the_local_day_instead_of_the_previous_forecast_day(client, database, monkeypatch):
     def fail_ingest(*_args, **_kwargs):
         raise AssertionError("A fresh snapshot should stay in the database.")
@@ -75,9 +109,24 @@ def test_current_weather_uses_the_local_day_instead_of_the_previous_forecast_day
         issuance_basis="retrieval_time",
     )
     database.add(run)
+    hourly_run = ForecastRun(
+        location_id=location.id,
+        provider="open-meteo",
+        model_name="forecast-hourly",
+        issued_at=now,
+        retrieved_at=now,
+        issuance_basis="retrieval_time",
+    )
+    database.add(hourly_run)
     database.flush()
     database.add_all(
         [
+            ForecastValue(
+                run_id=hourly_run.id,
+                valid_at=now,
+                granularity="hourly",
+                temperature_c=32.0,
+            ),
             ForecastValue(
                 run_id=run.id,
                 valid_at=local_midnight(yesterday),

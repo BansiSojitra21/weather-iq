@@ -7,7 +7,7 @@ import { useDashboard } from "@/components/dashboard-context";
 import { StatePanel } from "@/components/states";
 import { Badge, Card } from "@/components/ui";
 import { api, ApiError } from "@/lib/api";
-import { formatNumber, formatWhen } from "@/lib/format";
+import { dateKeyInTimeZone, formatNumber, formatWhen } from "@/lib/format";
 
 type TemperatureResponse = {
   model: { name: string; version: string; algorithm: string };
@@ -123,8 +123,10 @@ export function ForecastPage() {
   const data = temperature.data;
   const selected = data?.predictions.find((item) => item.horizon_days === horizon) ?? data?.predictions[0];
   const holdout = data?.backtest.by_horizon?.find((item) => item.horizon_days === selected?.horizon_days);
-  const targetDay = selected?.target_time.slice(0, 10);
-  const dailyOutlook = weather.data?.daily.find((item) => new Date(item.valid_at).toISOString().slice(0, 10) === targetDay);
+  const targetDay = dateKeyInTimeZone(selected?.target_time, timeZone);
+  const dailyOutlook = targetDay
+    ? weather.data?.daily.find((item) => dateKeyInTimeZone(item.valid_at, timeZone) === targetDay)
+    : undefined;
   const unit = data?.unit_labels.temperature ?? "°C";
   const change = selected?.persistence_baseline == null
     ? null
@@ -234,7 +236,11 @@ export function ForecastPage() {
                   : `Daily outlook · ${formatNumber(dailyOutlook.precipitation)} ${data?.unit_labels.precipitation} expected`
                 : weather.isError
                   ? "Rain outlook unavailable"
-                  : "No rain estimate for this date"}
+                  : weather.isLoading
+                    ? "Loading rain outlook"
+                    : weather.data?.daily.length
+                      ? "No rain estimate for this date"
+                      : "Rain outlook is being refreshed or is unavailable"}
             />
             <MetricCard
               icon={Gauge}
