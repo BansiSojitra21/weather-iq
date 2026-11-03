@@ -3,7 +3,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
 import { BellRing, ShieldAlert } from "lucide-react";
-import { AlertActions } from "@/components/alert-actions";
 import { useDashboard } from "@/components/dashboard-context";
 import { StatePanel } from "@/components/states";
 import { Badge, Button, Card, Input, Select } from "@/components/ui";
@@ -224,19 +223,6 @@ export function WeatherIntelligencePage() {
       console.error("New weather alerts were recorded, but browser notification could not be shown.", error);
     }
   }, [notificationQuery.data, browserNotifications, notificationSeverities]);
-
-  const acknowledgeMutation = useMutation({
-    mutationFn: ({ alertId, status }: { alertId: number; status: "acknowledged" | "resolved" }) =>
-      api<AlertItem>(`alerts/${alertId}`, {
-        method: "PATCH",
-        body: JSON.stringify({ status }),
-      }),
-    onSuccess: async () => {
-      setActionError(null);
-      await queryClient.invalidateQueries({ queryKey: ["alerts"] });
-    },
-    onError: (error) => setActionError(error instanceof Error ? error.message : "Alert status could not be updated."),
-  });
 
   const ruleMutation = useMutation({
     mutationFn: ({ ruleId, enabled }: { ruleId: number; enabled: boolean }) =>
@@ -492,7 +478,7 @@ export function WeatherIntelligencePage() {
           <div className="flex items-start justify-between gap-3">
             <div>
               <h2 className="font-semibold">Alert history</h2>
-              <p className="mt-1 text-xs text-muted-foreground">Stored rule events and their in-app acknowledgement status.</p>
+              <p className="mt-1 text-xs text-muted-foreground">Recent events from your enabled alert rules.</p>
             </div>
             <Badge tone="accent">{alertQuery.data?.total ?? "…"}</Badge>
           </div>
@@ -509,17 +495,11 @@ export function WeatherIntelligencePage() {
                       {severityLabel(alert.severity)}
                     </Badge>
                   </div>
-                  <p className="mt-1 text-xs text-muted-foreground">{alert.location_name ?? "Location"} · {formatWhen(alert.event_time, zone)} · {alert.status}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{alert.location_name ?? "Location"} · {formatWhen(alert.event_time, zone)}</p>
                   <p className="mt-2 text-sm">{alert.message}</p>
-                  <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-                    <span className="text-xs text-muted-foreground">
-                      Delivery: {alert.delivery.state}{alert.delivery.attempts ? ` · ${alert.delivery.attempts} attempt(s)` : ""}
-                    </span>
-                    <AlertActions
-                      status={alert.status}
-                      onChange={(status) => acknowledgeMutation.mutate({ alertId: alert.id, status })}
-                    />
-                  </div>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Delivery: {alert.delivery.state}{alert.delivery.attempts ? ` · ${alert.delivery.attempts} attempt(s)` : ""}
+                  </p>
                 </article>
               );
             })}
@@ -541,7 +521,7 @@ export function WeatherIntelligencePage() {
       <Card className="flex gap-3 p-4">
         <BellRing className="mt-0.5 h-4 w-4 shrink-0 text-accent" aria-hidden />
         <p className="text-xs leading-relaxed text-muted-foreground">
-          Scores are transparent threshold heuristics, not an AI probability or official hazard assessment. The app records alerts and supports acknowledgement; push, SMS, and email delivery are not configured. For urgent conditions, follow official local advisories.
+          Scores are transparent threshold heuristics, not an AI probability or official hazard assessment. Browser notifications can be enabled from the bell menu; push, SMS, and email delivery are not configured. For urgent conditions, follow official local advisories.
         </p>
       </Card>
     </div>

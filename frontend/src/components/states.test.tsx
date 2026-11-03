@@ -2,7 +2,6 @@ import "@testing-library/jest-dom/vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { AlertActions } from "@/components/alert-actions";
 import { chartColors, LineSeriesChart } from "@/components/charts";
 import { StatePanel } from "@/components/states";
 
@@ -26,7 +25,7 @@ describe("interface states", () => {
   });
 });
 
-describe("charts and alert actions", () => {
+describe("charts", () => {
   it("renders a labeled chart", () => {
     render(
       <LineSeriesChart
@@ -38,10 +37,4 @@ describe("charts and alert actions", () => {
     expect(screen.getByRole("img", { name: "Hourly forecast temperature" })).toBeVisible();
   });
 
-  it("acknowledges an open alert", async () => {
-    const onChange = vi.fn();
-    render(<AlertActions status="open" onChange={onChange} />);
-    await userEvent.click(screen.getByRole("button", { name: "Acknowledge" }));
-    expect(onChange).toHaveBeenCalledWith("acknowledged");
-  });
 });
