@@ -497,9 +497,6 @@ export function WeatherIntelligencePage() {
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground">{alert.location_name ?? "Location"} · {formatWhen(alert.event_time, zone)}</p>
                   <p className="mt-2 text-sm">{alert.message}</p>
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    Delivery: {alert.delivery.state}{alert.delivery.attempts ? ` · ${alert.delivery.attempts} attempt(s)` : ""}
-                  </p>
                 </article>
               );
             })}

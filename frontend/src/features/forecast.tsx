@@ -136,13 +136,16 @@ export function ForecastPage() {
 
   return (
     <div className="space-y-5">
-      <header className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+      <header className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
         <div className="min-w-0">
           <Badge tone="accent">Forecast outlook</Badge>
           <h1 className="mt-1.5 text-2xl font-semibold tracking-tight sm:text-3xl">See what the next days may bring</h1>
           <p className="mt-1 text-sm text-muted-foreground">Explore the model estimate, daily outlook, and the evidence behind each lead time.</p>
         </div>
         <div className="flex flex-col items-start gap-2 lg:items-end">
+          <p className="px-1 text-xs text-muted-foreground lg:text-right">
+            Target: <span className="font-medium text-foreground">{selected ? formatWhen(selected.target_time, timeZone) : "Unavailable"}</span>
+          </p>
           <div className="flex max-w-full flex-wrap items-center gap-1.5 rounded-2xl border border-border bg-muted/60 p-1" role="group" aria-label="Forecast horizon">
             <span className="pl-3 pr-1 text-xs font-medium text-muted-foreground">Look ahead</span>
             {HORIZONS.map((days) => (
@@ -161,9 +164,6 @@ export function ForecastPage() {
               </button>
             ))}
           </div>
-          <p className="px-1 text-xs text-muted-foreground lg:text-right">
-            Target: <span className="font-medium text-foreground">{selected ? formatWhen(selected.target_time, timeZone) : "Unavailable"}</span>
-          </p>
         </div>
       </header>
 
