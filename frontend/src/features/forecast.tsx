@@ -3,7 +3,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { ArrowDown, ArrowUp, CloudSun, Droplets, Gauge, ThermometerSun } from "lucide-react";
-import { LineSeriesChart, chartColors } from "@/components/charts";
 import { useDashboard } from "@/components/dashboard-context";
 import { StatePanel } from "@/components/states";
 import { Badge, Card } from "@/components/ui";
@@ -54,23 +53,6 @@ type DailyWeatherResponse = {
   }[];
 };
 
-type WeatherHistoryResponse = {
-  series: {
-    observed_at: string;
-    temperature: number | null;
-    temperature_min: number | null;
-    temperature_max: number | null;
-    precipitation: number | null;
-  }[];
-  unit_labels: { temperature: string; precipitation: string };
-};
-
-function shiftDate(date: string, days: number) {
-  const shifted = new Date(`${date}T12:00:00Z`);
-  shifted.setUTCDate(shifted.getUTCDate() + days);
-  return shifted.toISOString().slice(0, 10);
-}
-
 function MetricCard({
   icon: Icon,
   label,
@@ -97,9 +79,6 @@ function MetricCard({
 export function ForecastPage() {
   const { locationId, units, timeZone } = useDashboard();
   const [horizon, setHorizon] = useState<number>(1);
-  const today = dateKeyInTimeZone(new Date().toISOString(), timeZone) ?? new Date().toISOString().slice(0, 10);
-  const historyEnd = shiftDate(today, -1);
-  const historyStart = shiftDate(historyEnd, -6);
   const tempCacheKey = `weatheriq.cache.predict-temperature.${locationId}.${units}`;
   const temperature = useQuery({
     queryKey: ["predict-temperature", locationId, units],
@@ -130,14 +109,6 @@ export function ForecastPage() {
     enabled: locationId != null,
     queryFn: () => api<DailyWeatherResponse>(`weather/current?location_id=${locationId}&units=${units}`),
   });
-  const recentObservations = useQuery({
-    queryKey: ["observed-weather-history", locationId, units, historyStart, historyEnd],
-    enabled: locationId != null,
-    queryFn: () =>
-      api<WeatherHistoryResponse>(
-        `weather/history?location_id=${locationId}&start=${historyStart}&end=${historyEnd}&granularity=daily&units=${units}`,
-      ),
-  });
   if (locationId == null || temperature.isLoading) return <StatePanel status="loading" />;
   if (temperature.isError) {
     return (
@@ -164,15 +135,17 @@ export function ForecastPage() {
   const direction = change == null ? "Yesterday comparison unavailable" : Math.abs(change) < 0.05
     ? "Close to the previous day's average"
     : `${formatNumber(Math.abs(change))} ${unit} ${change > 0 ? "warmer" : "cooler"} than the previous day's average`;
-  const observations = recentObservations.data?.series ?? [];
-  const temperatures = observations.flatMap((row) => row.temperature == null ? [] : [row.temperature]);
-  const rainfall = observations.flatMap((row) => row.precipitation == null ? [] : [row.precipitation]);
-  const meanTemperature = temperatures.length
-    ? temperatures.reduce((sum, value) => sum + value, 0) / temperatures.length
+  const rainOutlook = (weather.data?.daily ?? []).slice(0, 7);
+  const forecastRainfall = rainOutlook.flatMap((row) => row.precipitation == null ? [] : [row.precipitation]);
+  const totalForecastRainfall = forecastRainfall.length
+    ? forecastRainfall.reduce((sum, value) => sum + value, 0)
     : null;
-  const totalRainfall = rainfall.length
-    ? rainfall.reduce((sum, value) => sum + value, 0)
-    : null;
+  const highestRainChance = rainOutlook.reduce<number | null>(
+    (highest, row) => row.precipitation_probability == null
+      ? highest
+      : Math.max(highest ?? 0, row.precipitation_probability),
+    null,
+  );
 
   return (
     <div className="space-y-5">
@@ -341,63 +314,85 @@ export function ForecastPage() {
             <Card className="min-w-0 overflow-hidden p-4 sm:p-5">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div>
-                  <h2 className="font-semibold">Recent observed weather</h2>
-                  <p className="mt-1 text-xs text-muted-foreground">Actual daily measurements · {historyStart} to {historyEnd}</p>
+                  <h2 className="font-semibold">Rain outlook · next 7 days</h2>
+                  <p className="mt-1 text-xs text-muted-foreground">Daily forecast for {new Intl.DateTimeFormat("en-GB", { timeZone, timeZoneName: "short" }).format(new Date())}</p>
                 </div>
-                <Badge tone="ok">Observed</Badge>
+                <Badge tone="accent">Forecast</Badge>
               </div>
-              {recentObservations.isLoading ? (
-                <p className="mt-5 text-sm text-muted-foreground">Loading archived observations…</p>
-              ) : recentObservations.isError ? (
+              {weather.isLoading ? (
+                <p className="mt-5 text-sm text-muted-foreground">Loading the daily rain forecast…</p>
+              ) : weather.isError ? (
                 <div className="mt-5 rounded-xl border border-danger/20 bg-danger/5 p-3">
                   <p className="text-sm text-danger">
-                    {recentObservations.error instanceof ApiError
-                      ? recentObservations.error.message
-                      : "Observed weather could not be loaded."}
+                    {weather.error instanceof ApiError
+                      ? weather.error.message
+                      : "The rain forecast could not be loaded."}
                   </p>
-                  <button type="button" className="mt-2 text-xs font-medium text-accent underline" onClick={() => recentObservations.refetch()}>
+                  <button type="button" className="mt-2 text-xs font-medium text-accent underline" onClick={() => weather.refetch()}>
                     Try again
                   </button>
                 </div>
-              ) : observations.length ? (
+              ) : rainOutlook.length ? (
                 <>
                   <div className="mt-4 grid grid-cols-2 gap-2">
                     <div className="rounded-xl bg-muted/60 p-3">
-                      <p className="text-xs text-muted-foreground">Observed mean</p>
+                      <p className="text-xs text-muted-foreground">Highest rain chance</p>
                       <p className="mt-1 text-lg font-semibold">
-                        {formatNumber(meanTemperature)} <span className="text-xs font-normal text-muted-foreground">{recentObservations.data?.unit_labels.temperature ?? unit}</span>
+                        {highestRainChance == null ? "—" : `${formatNumber(highestRainChance, 0)}%`}
                       </p>
-                      <p className="mt-0.5 text-xs text-muted-foreground">{temperatures.length} observed day{temperatures.length === 1 ? "" : "s"}</p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">Across the forecast period</p>
                     </div>
                     <div className="rounded-xl bg-muted/60 p-3">
-                      <p className="text-xs text-muted-foreground">Observed rainfall</p>
+                      <p className="text-xs text-muted-foreground">Expected rainfall</p>
                       <p className="mt-1 text-lg font-semibold">
-                        {formatNumber(totalRainfall)} <span className="text-xs font-normal text-muted-foreground">{recentObservations.data?.unit_labels.precipitation}</span>
+                        {formatNumber(totalForecastRainfall)} <span className="text-xs font-normal text-muted-foreground">{data?.unit_labels.precipitation}</span>
                       </p>
-                      <p className="mt-0.5 text-xs text-muted-foreground">{rainfall.length} measured day{rainfall.length === 1 ? "" : "s"}</p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">Total for available days</p>
                     </div>
                   </div>
-                  <div className="mt-2">
-                    <LineSeriesChart
-                      label="Observed daily mean, low, and high temperatures"
-                      data={observations.map((row) => ({
-                        label: new Intl.DateTimeFormat("en-GB", { timeZone, day: "2-digit", month: "short" }).format(new Date(row.observed_at)),
-                        mean: row.temperature,
-                        low: row.temperature_min,
-                        high: row.temperature_max,
-                      }))}
-                      lines={[
-                        { key: "mean", name: "Mean", color: chartColors.primary },
-                        { key: "high", name: "High", color: chartColors.tertiary },
-                        { key: "low", name: "Low", color: chartColors.secondary },
-                      ]}
-                    />
-                  </div>
-                  <p className="text-xs text-muted-foreground">Daily observed temperatures in {recentObservations.data?.unit_labels.temperature ?? unit}. Values are from the weather archive, not forecast estimates.</p>
+                  <ul className="mt-3 divide-y divide-border">
+                    {rainOutlook.map((day) => {
+                      const chance = day.precipitation_probability;
+                      const date = new Date(day.valid_at);
+                      const label = Number.isNaN(date.getTime())
+                        ? "Date unavailable"
+                        : new Intl.DateTimeFormat("en-GB", {
+                            timeZone,
+                            weekday: "short",
+                            day: "2-digit",
+                            month: "short",
+                          }).format(date);
+                      return (
+                        <li key={day.valid_at} className="grid grid-cols-[4.5rem_minmax(0,1fr)_auto] items-center gap-3 py-2.5 text-sm">
+                          <span className="text-xs font-medium text-muted-foreground">{label}</span>
+                          <div className="flex min-w-0 items-center gap-2">
+                            <span className="w-9 shrink-0 text-xs tabular-nums">{chance == null ? "—" : `${formatNumber(chance, 0)}%`}</span>
+                            <div
+                              className="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-muted"
+                              role="meter"
+                              aria-label={`${label} rain probability`}
+                              aria-valuemin={0}
+                              aria-valuemax={100}
+                              aria-valuenow={chance ?? 0}
+                            >
+                              <div
+                                className="h-full rounded-full bg-accent transition-[width]"
+                                style={{ width: `${Math.min(100, Math.max(0, chance ?? 0))}%` }}
+                              />
+                            </div>
+                          </div>
+                          <span className="text-right text-xs tabular-nums text-muted-foreground">
+                            {formatNumber(day.precipitation)} {data?.unit_labels.precipitation}
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  <p className="mt-2 text-xs text-muted-foreground">Rain probability and expected amount · daily forecast, not observed rainfall.</p>
                 </>
               ) : (
                 <p className="mt-5 rounded-xl bg-muted/60 p-4 text-sm text-muted-foreground">
-                  No archived daily observations are available for this period yet.
+                  Daily rain forecast is not available yet. It may appear after the weather data refresh completes.
                 </p>
               )}
             </Card>
