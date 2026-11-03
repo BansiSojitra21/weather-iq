@@ -9,6 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
+from app.db import session as db_session
 from app.db.models import CurrentCondition, ForecastRun, ForecastValue, IngestionRun, Location, WeatherObservation
 from app.services.catalog import as_utc
 from app.services.open_meteo import (
@@ -350,26 +351,49 @@ def catch_up_daily_history(session: Session, location: Location) -> int:
     return count
 
 
-def ensure_fresh_current(session: Session, location: Location) -> None:
-    """Refresh current conditions and the forecast when the stored snapshot is old or from a previous local day."""
+def current_snapshot_state(session: Session, location: Location) -> tuple[bool, bool]:
     latest = (
         session.query(CurrentCondition)
         .filter_by(location_id=location.id)
         .order_by(CurrentCondition.retrieved_at.desc())
         .first()
     )
+    if latest is None:
+        return False, True
     now = datetime.now(timezone.utc)
-    refresh = latest is None
-    if latest is not None:
-        retrieved = as_utc(latest.retrieved_at)
-        refresh = now - retrieved > timedelta(minutes=get_settings().cache_ttl_minutes)
-        if not refresh:
-            zone = _location_zone(location)
-            refresh = retrieved.astimezone(zone).date() < now.astimezone(zone).date()
+    retrieved = as_utc(latest.retrieved_at)
+    refresh = now - retrieved > timedelta(minutes=get_settings().cache_ttl_minutes)
+    if not refresh:
+        zone = _location_zone(location)
+        refresh = retrieved.astimezone(zone).date() < now.astimezone(zone).date()
+    return True, refresh
+
+
+def ensure_fresh_current(session: Session, location: Location) -> None:
+    """Refresh current conditions and the forecast when the stored snapshot is old or from a previous local day."""
+    _, refresh = current_snapshot_state(session, location)
     if not refresh:
         return
     logger.info("refreshing_current_conditions location_id=%s", location.id)
     ingest_location(session, location, kinds={"current", "forecast"})
+
+
+def refresh_current_snapshot(location_id: int) -> None:
+    if db_session.SessionLocal is None:
+        db_session.init_database()
+    assert db_session.SessionLocal is not None
+    session = db_session.SessionLocal()
+    try:
+        location = session.get(Location, location_id)
+        if location is not None:
+            ensure_fresh_current(session, location)
+        session.commit()
+    except Exception:
+        session.rollback()
+        logger.exception("Background weather refresh failed for location_id=%s", location_id)
+        raise
+    finally:
+        session.close()
 
 
 def ingest_many(session: Session, locations: list[Location], **kwargs) -> list[dict]:

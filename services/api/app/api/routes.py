@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, time, timedelta, timezone
 
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, Response
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -24,7 +24,7 @@ from app.services.analytics import (
 )
 from app.services.anomaly_service import anomaly_out, detect_anomalies, review_anomaly
 from app.services.catalog import ATTRIBUTION, DISCLAIMER, isoformat
-from app.services.ingestion import ensure_fresh_current, ingest_many
+from app.services.ingestion import current_snapshot_state, ensure_fresh_current, ingest_many, refresh_current_snapshot
 from app.services.monitoring import monitoring_payload
 from app.services.open_meteo import fetch_json, geocode_url
 from app.services.predictions import external_benchmark, predict_precipitation, predict_temperature
@@ -217,12 +217,17 @@ def geocode(q: str = Query(min_length=2), session: Session = Depends(get_db)) ->
 
 @router.get("/weather/current")
 def weather_current(
+    background_tasks: BackgroundTasks,
     location_id: int,
     units: str = Depends(units_param),
     session: Session = Depends(get_db),
 ) -> dict:
     location = _location(session, location_id)
-    ensure_fresh_current(session, location)
+    has_snapshot, needs_refresh = current_snapshot_state(session, location)
+    if not has_snapshot:
+        ensure_fresh_current(session, location)
+    elif needs_refresh:
+        background_tasks.add_task(refresh_current_snapshot, location.id)
     return current_payload(session, location, units)
 
 
@@ -247,12 +252,17 @@ def weather_history(
 
 @router.get("/weather/forecast")
 def weather_forecast(
+    background_tasks: BackgroundTasks,
     location_id: int,
     units: str = Depends(units_param),
     session: Session = Depends(get_db),
 ) -> dict:
     location = _location(session, location_id)
-    ensure_fresh_current(session, location)
+    has_snapshot, needs_refresh = current_snapshot_state(session, location)
+    if not has_snapshot:
+        ensure_fresh_current(session, location)
+    elif needs_refresh:
+        background_tasks.add_task(refresh_current_snapshot, location.id)
     payload = current_payload(session, location, units)
     return {
         "location": payload["location"],

@@ -6,9 +6,9 @@ from app.services.ingestion import catch_up_daily_history
 from app.services.seed import seed_defaults
 
 
-def test_stale_snapshot_is_refreshed_before_current_weather_is_returned(client, database, monkeypatch):
+def test_stale_snapshot_is_returned_while_refresh_runs_in_background(client, database, monkeypatch):
     location = database.query(Location).filter_by(name="Mumbai").one()
-    observed = datetime(2026, 10, 21, 12, 50, tzinfo=timezone.utc)
+    observed = datetime.now(timezone.utc) - timedelta(minutes=45)
     database.add(
         CurrentCondition(
             location_id=location.id,
@@ -21,9 +21,12 @@ def test_stale_snapshot_is_refreshed_before_current_weather_is_returned(client, 
     )
     database.commit()
 
+    refreshes = []
+
     def fake_ingest(session, loc, **kwargs):
         assert loc.id == location.id
         assert kwargs["kinds"] == {"current", "forecast"}
+        refreshes.append(loc.id)
         row = session.query(CurrentCondition).filter_by(location_id=loc.id).one()
         row.temperature_c = 33.4
         row.observed_at = datetime.now(timezone.utc).replace(microsecond=0)
@@ -34,11 +37,10 @@ def test_stale_snapshot_is_refreshed_before_current_weather_is_returned(client, 
     monkeypatch.setattr("app.services.ingestion.ingest_location", fake_ingest)
     response = client.get("/api/v1/weather/current", params={"location_id": location.id})
     assert response.status_code == 200
-    body = response.json()
-    assert body["observation"]["temperature"] == 33.4
-    assert body["freshness"]["stale"] is False
-    updated = datetime.fromisoformat(body["freshness"]["retrieved_at"].replace("Z", "+00:00"))
-    assert datetime.now(timezone.utc) - updated < timedelta(minutes=5)
+    assert response.json()["observation"]["temperature"] == 31.8
+    assert refreshes == [location.id]
+    updated = database.query(CurrentCondition).filter_by(location_id=location.id).one()
+    assert updated.temperature_c == 33.4
 
 
 def test_current_weather_uses_the_local_day_instead_of_the_previous_forecast_day(client, database, monkeypatch):
