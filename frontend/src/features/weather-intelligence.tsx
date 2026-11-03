@@ -1,14 +1,13 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { BellRing, ShieldAlert } from "lucide-react";
 import { useDashboard } from "@/components/dashboard-context";
 import { StatePanel } from "@/components/states";
 import { Badge, Button, Card, Input, Select } from "@/components/ui";
 import { api, ApiError } from "@/lib/api";
 import { formatNumber, formatWhen } from "@/lib/format";
-import { subscribeNotificationPreferences } from "@/lib/notification-preferences";
 import type { AlertItem } from "@/lib/types";
 
 type RiskFactor = {
@@ -79,17 +78,8 @@ const VARIABLE_LABELS: Record<string, string> = {
   precipitation_mm: "Rainfall",
   wind_speed_kmh: "Wind speed",
 };
-const DEFAULT_NOTIFICATION_SEVERITIES = ["low", "moderate", "high", "critical"];
-
 function severityLabel(value: string) {
   return SEVERITY_LABELS[value] ?? value;
-}
-
-function normalizedSeverity(value: string) {
-  if (value === "info") return "low";
-  if (value === "watch") return "moderate";
-  if (value === "warning") return "high";
-  return value;
 }
 
 function operatorLabel(value: string) {
@@ -155,29 +145,7 @@ export function WeatherIntelligencePage() {
   const [severity, setSeverity] = useState("high");
   const [alertPage, setAlertPage] = useState(1);
   const [actionError, setActionError] = useState<string | null>(null);
-  const seenAlertIds = useRef<Set<number> | null>(null);
-  const browserNotifications = useSyncExternalStore(
-    subscribeNotificationPreferences,
-    () => window.localStorage.getItem("weatheriq.alert-notifications") === "true",
-    () => false,
-  );
-  const storedSeverities = useSyncExternalStore(
-    subscribeNotificationPreferences,
-    () => window.localStorage.getItem("weatheriq.alert-notification-severities") ?? "",
-    () => "",
-  );
-  const notificationSeverities = useMemo(() => {
-    if (!storedSeverities) return DEFAULT_NOTIFICATION_SEVERITIES;
-    try {
-      const parsed: unknown = JSON.parse(storedSeverities);
-      if (Array.isArray(parsed) && parsed.every((item) => DEFAULT_NOTIFICATION_SEVERITIES.includes(item))) {
-        return parsed;
-      }
-    } catch {
-      return DEFAULT_NOTIFICATION_SEVERITIES;
-    }
-    return DEFAULT_NOTIFICATION_SEVERITIES;
-  }, [storedSeverities]);
+  const [savedRuleMessage, setSavedRuleMessage] = useState<string | null>(null);
 
   const riskQuery = useQuery({
     queryKey: ["risk-overview"],
@@ -187,42 +155,10 @@ export function WeatherIntelligencePage() {
     queryKey: ["alerts", alertPage],
     queryFn: () => api<AlertList>(`alerts?page=${alertPage}&page_size=20`),
   });
-  const notificationQuery = useQuery({
-    queryKey: ["alerts", "notifications"],
-    queryFn: () => api<AlertList>("alerts?page=1&page_size=20"),
-    refetchInterval: 30_000,
-  });
   const rulesQuery = useQuery({
     queryKey: ["alert-rules"],
     queryFn: () => api<AlertRuleList>("alerts/rules"),
   });
-
-  useEffect(() => {
-    const items = notificationQuery.data?.items;
-    if (!items) return;
-    const knownIds = seenAlertIds.current;
-    seenAlertIds.current = new Set([...(knownIds ?? []), ...items.map((alert) => alert.id)]);
-    if (!knownIds || !browserNotifications || typeof Notification === "undefined" || Notification.permission !== "granted") return;
-    const newAlerts = items.filter(
-      (alert) => !knownIds.has(alert.id) && notificationSeverities.includes(normalizedSeverity(alert.severity)),
-    );
-    if (!newAlerts.length) return;
-    try {
-      const title = newAlerts.length === 1 ? newAlerts[0].title : `${newAlerts.length} weather threshold alerts`;
-      const body = newAlerts.length === 1 ? newAlerts[0].message : newAlerts.map((alert) => alert.title).join("; ");
-      const notification = new Notification(title, {
-        body,
-        icon: "/icon.svg",
-        tag: `weatheriq-alert-${newAlerts[newAlerts.length - 1].id}`,
-      });
-      notification.onclick = () => {
-        window.focus();
-        notification.close();
-      };
-    } catch (error) {
-      console.error("New weather alerts were recorded, but browser notification could not be shown.", error);
-    }
-  }, [notificationQuery.data, browserNotifications, notificationSeverities]);
 
   const ruleMutation = useMutation({
     mutationFn: ({ ruleId, enabled }: { ruleId: number; enabled: boolean }) =>
@@ -241,10 +177,11 @@ export function WeatherIntelligencePage() {
   const createRuleMutation = useMutation({
     mutationFn: (body: object) =>
       api<AlertRule>("alerts/rules", { method: "POST", body: JSON.stringify(body) }),
-    onSuccess: async () => {
+    onSuccess: async (rule) => {
       setRuleName("");
       setThreshold("");
       setActionError(null);
+      setSavedRuleMessage(`Saved "${rule.name}". It will notify when the threshold is met.`);
       await queryClient.invalidateQueries({ queryKey: ["alert-rules"] });
       await queryClient.invalidateQueries({ queryKey: ["alerts"] });
     },
@@ -281,6 +218,8 @@ export function WeatherIntelligencePage() {
 
   function submitRule(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setActionError(null);
+    setSavedRuleMessage(null);
     const thresholdValue = Number(threshold);
     if (!ruleName.trim() || !Number.isFinite(thresholdValue) || locationId == null) return;
     const thresholdMetric = units === "imperial"
@@ -441,6 +380,9 @@ export function WeatherIntelligencePage() {
           </div>
           <form onSubmit={submitRule} className="mt-4 space-y-3 border-t border-border pt-4">
             <h3 className="text-sm font-semibold">Add a location threshold</h3>
+            <p className="text-xs text-muted-foreground">
+              Rules are evaluated against stored weather. Turn on browser notifications from the bell menu; the app must remain open to receive them.
+            </p>
             <label className="block text-xs text-muted-foreground">
               Rule name
               <Input className="mt-1" value={ruleName} onChange={(event) => setRuleName(event.target.value)} required maxLength={160} placeholder="For example, Strong wind" />
@@ -471,6 +413,8 @@ export function WeatherIntelligencePage() {
             <Button type="submit" variant="secondary" disabled={createRuleMutation.isPending}>
               {createRuleMutation.isPending ? "Saving…" : `Save rule for ${locations.find((item) => item.id === locationId)?.name ?? "selected city"}`}
             </Button>
+            <AlertMessage message={actionError} />
+            {savedRuleMessage ? <p role="status" className="text-sm text-ok">{savedRuleMessage}</p> : null}
           </form>
         </Card>
 
@@ -514,7 +458,6 @@ export function WeatherIntelligencePage() {
         </Card>
       </div>
 
-      <AlertMessage message={actionError} />
       <Card className="flex gap-3 p-4">
         <BellRing className="mt-0.5 h-4 w-4 shrink-0 text-accent" aria-hidden />
         <p className="text-xs leading-relaxed text-muted-foreground">

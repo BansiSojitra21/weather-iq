@@ -28,6 +28,12 @@ The project includes a Next.js frontend, a FastAPI backend, model training scrip
 
 Weather data is sourced from Open-Meteo. The project treats model outputs and derived analytics as informational outputs, not official weather warnings.
 
+## Deploying alerts
+
+The frontend needs `API_INTERNAL_BASE_URL` set to the deployed FastAPI base URL, including `/api/v1`, and `WEATHERIQ_API_KEY` set to the same API key configured on that backend. Configure both as Vercel environment variables and redeploy; a localhost API URL only works when the backend runs on the same machine.
+
+The API must use a persistent database and keep alert evaluation enabled. Browser notifications also require the user to enable them from the bell menu and grant browser permission. They are delivered while the WeatherIQ page is open; this app does not currently use push notifications for a closed browser.
+
 ## Repository purpose
 
 This repository is a weather intelligence and analytics project for local experimentation and monitoring, with a focus on forecast quality, anomaly detection, and rule-based alert evaluation.

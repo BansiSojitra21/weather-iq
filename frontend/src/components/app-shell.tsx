@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import { DashboardProvider, useDashboard } from "@/components/dashboard-context";
-import { NotificationCenter } from "@/components/notification-center";
+import { AlertNotificationWatcher, NotificationCenter } from "@/components/notification-center";
 import { SelectionDropdown } from "@/components/selection-dropdown";
 import { Button } from "@/components/ui";
 import { cn } from "@/lib/utils";
@@ -48,6 +48,7 @@ function Shell({ children }: { children: ReactNode }) {
 
   return (
     <div className="min-h-screen overflow-x-clip">
+      <AlertNotificationWatcher />
       <header className="sticky top-0 z-30 border-b border-border bg-white">
         <div className="mx-auto grid w-full max-w-7xl grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-3 px-4 py-3 md:grid-cols-[minmax(0,1fr)_auto_auto] lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
           <Link href="/" className="col-start-1 row-start-1 flex min-w-0 items-center gap-3">

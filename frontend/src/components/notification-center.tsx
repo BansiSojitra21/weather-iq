@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { Bell, BellOff, ChevronDown } from "lucide-react";
-import { useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Badge, Button } from "@/components/ui";
 import { api } from "@/lib/api";
 import {
@@ -20,6 +20,89 @@ const NOTIFICATIONS_KEY = "weatheriq.alert-notifications";
 const DEFAULT_NOTIFICATION_SEVERITIES = ["low", "moderate", "high", "critical"];
 const SEVERITIES_KEY = "weatheriq.alert-notification-severities";
 
+function normalizedSeverity(value: string) {
+  if (value === "info") return "low";
+  if (value === "watch") return "moderate";
+  if (value === "warning") return "high";
+  return value;
+}
+
+function useAlertSeverities(storedSeverities: string) {
+  return useMemo(() => {
+    if (!storedSeverities) return DEFAULT_NOTIFICATION_SEVERITIES;
+    try {
+      const parsed: unknown = JSON.parse(storedSeverities);
+      if (Array.isArray(parsed)) {
+        const valid = parsed.filter(
+          (item): item is string => typeof item === "string" && DEFAULT_NOTIFICATION_SEVERITIES.includes(item),
+        );
+        if (valid.length === parsed.length) return valid;
+      }
+    } catch {
+      return DEFAULT_NOTIFICATION_SEVERITIES;
+    }
+    return DEFAULT_NOTIFICATION_SEVERITIES;
+  }, [storedSeverities]);
+}
+
+export function AlertNotificationWatcher() {
+  const enabled = useSyncExternalStore(
+    subscribeNotificationPreferences,
+    () => window.localStorage.getItem(NOTIFICATIONS_KEY) === "true",
+    () => false,
+  );
+  const storedSeverities = useSyncExternalStore(
+    subscribeNotificationPreferences,
+    () => window.localStorage.getItem(SEVERITIES_KEY) ?? "",
+    () => "",
+  );
+  const severities = useAlertSeverities(storedSeverities);
+  const permission = useSyncExternalStore(
+    subscribeNotificationPermission,
+    getNotificationPermission,
+    () => "default",
+  );
+  const notificationsActive = enabled && permission === "granted";
+  const seenAlertIds = useRef<Set<number> | null>(null);
+  const notificationQuery = useQuery({
+    queryKey: ["alerts", "browser-notifications"],
+    queryFn: () => api<AlertList>("alerts?page=1&page_size=20"),
+    enabled: notificationsActive,
+    refetchInterval: notificationsActive ? 30_000 : false,
+    refetchIntervalInBackground: false,
+  });
+
+  useEffect(() => {
+    const items = notificationQuery.data?.items;
+    if (!items) return;
+    const knownIds = seenAlertIds.current;
+    seenAlertIds.current = new Set([...(knownIds ?? []), ...items.map((alert) => alert.id)]);
+    if (!knownIds || !notificationsActive || typeof Notification === "undefined" || Notification.permission !== "granted") return;
+    const newAlerts = items.filter(
+      (alert) =>
+        !knownIds.has(alert.id) && severities.includes(normalizedSeverity(alert.severity)),
+    );
+    if (!newAlerts.length) return;
+    try {
+      const title = newAlerts.length === 1 ? newAlerts[0].title : `${newAlerts.length} weather threshold alerts`;
+      const body = newAlerts.length === 1 ? newAlerts[0].message : newAlerts.map((alert) => alert.title).join("; ");
+      const notification = new Notification(title, {
+        body,
+        icon: "/icon.svg",
+        tag: `weatheriq-alert-${newAlerts[newAlerts.length - 1].id}`,
+      });
+      notification.onclick = () => {
+        window.focus();
+        notification.close();
+      };
+    } catch (error) {
+      console.error("New weather alerts were recorded, but browser notification could not be shown.", error);
+    }
+  }, [notificationQuery.data, notificationsActive, severities]);
+
+  return null;
+}
+
 export function NotificationCenter({ locations }: { locations: Location[] }) {
   const [open, setOpen] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -33,29 +116,19 @@ export function NotificationCenter({ locations }: { locations: Location[] }) {
     () => window.localStorage.getItem(SEVERITIES_KEY) ?? "",
     () => "",
   );
-  let severities = DEFAULT_NOTIFICATION_SEVERITIES;
-  if (storedSeverities) {
-    try {
-      const parsed: unknown = JSON.parse(storedSeverities);
-      if (Array.isArray(parsed) && parsed.every((item) => DEFAULT_NOTIFICATION_SEVERITIES.includes(item))) {
-        severities = parsed;
-      }
-    } catch {
-      severities = DEFAULT_NOTIFICATION_SEVERITIES;
-    }
-  }
+  const severities = useAlertSeverities(storedSeverities);
   const permission = useSyncExternalStore(
     subscribeNotificationPermission,
     getNotificationPermission,
     () => "default",
   );
+  const notificationsActive = enabled && permission === "granted";
   const alertsQuery = useQuery({
     queryKey: ["alerts", "notification-center"],
     queryFn: () => api<AlertList>("alerts?page=1&page_size=5"),
     enabled: open,
     refetchInterval: open ? 30_000 : false,
   });
-
   async function toggleNotifications() {
     setActionError(null);
     if (enabled && permission === "granted") {
@@ -96,8 +169,6 @@ export function NotificationCenter({ locations }: { locations: Location[] }) {
       : [...severities, level];
     updateNotificationPreference(SEVERITIES_KEY, JSON.stringify(next));
   }
-
-  const notificationsActive = enabled && permission === "granted";
 
   return (
     <div className="relative">
