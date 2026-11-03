@@ -428,7 +428,7 @@ export function WeatherIntelligencePage() {
           </div>
           {alertQuery.isLoading ? <p className="mt-4 text-sm text-muted-foreground">Loading alert history…</p> : null}
           {alertQuery.isError ? <p role="alert" className="mt-4 text-sm text-danger">Alert history could not be loaded.</p> : null}
-          <div className="mt-3 min-h-0 flex-1 divide-y divide-border overflow-y-auto">
+          <div className="alert-history-scroll mt-3 min-h-0 flex-1 divide-y divide-border overflow-y-scroll">
             {(alertQuery.data?.items ?? []).map((alert) => {
               const zone = cityTimeZone(alert.location_id);
               return (
