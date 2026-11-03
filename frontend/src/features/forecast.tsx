@@ -3,6 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { ArrowDown, ArrowUp, CloudSun, Droplets, Gauge, ThermometerSun } from "lucide-react";
+import { LineSeriesChart, chartColors } from "@/components/charts";
 import { useDashboard } from "@/components/dashboard-context";
 import { StatePanel } from "@/components/states";
 import { Badge, Card } from "@/components/ui";
@@ -53,6 +54,23 @@ type DailyWeatherResponse = {
   }[];
 };
 
+type WeatherHistoryResponse = {
+  series: {
+    observed_at: string;
+    temperature: number | null;
+    temperature_min: number | null;
+    temperature_max: number | null;
+    precipitation: number | null;
+  }[];
+  unit_labels: { temperature: string; precipitation: string };
+};
+
+function shiftDate(date: string, days: number) {
+  const shifted = new Date(`${date}T12:00:00Z`);
+  shifted.setUTCDate(shifted.getUTCDate() + days);
+  return shifted.toISOString().slice(0, 10);
+}
+
 function MetricCard({
   icon: Icon,
   label,
@@ -79,6 +97,9 @@ function MetricCard({
 export function ForecastPage() {
   const { locationId, units, timeZone } = useDashboard();
   const [horizon, setHorizon] = useState<number>(1);
+  const today = dateKeyInTimeZone(new Date().toISOString(), timeZone) ?? new Date().toISOString().slice(0, 10);
+  const historyEnd = shiftDate(today, -1);
+  const historyStart = shiftDate(historyEnd, -6);
   const tempCacheKey = `weatheriq.cache.predict-temperature.${locationId}.${units}`;
   const temperature = useQuery({
     queryKey: ["predict-temperature", locationId, units],
@@ -109,6 +130,14 @@ export function ForecastPage() {
     enabled: locationId != null,
     queryFn: () => api<DailyWeatherResponse>(`weather/current?location_id=${locationId}&units=${units}`),
   });
+  const recentObservations = useQuery({
+    queryKey: ["observed-weather-history", locationId, units, historyStart, historyEnd],
+    enabled: locationId != null,
+    queryFn: () =>
+      api<WeatherHistoryResponse>(
+        `weather/history?location_id=${locationId}&start=${historyStart}&end=${historyEnd}&granularity=daily&units=${units}`,
+      ),
+  });
   if (locationId == null || temperature.isLoading) return <StatePanel status="loading" />;
   if (temperature.isError) {
     return (
@@ -135,6 +164,15 @@ export function ForecastPage() {
   const direction = change == null ? "Yesterday comparison unavailable" : Math.abs(change) < 0.05
     ? "Close to the previous day's average"
     : `${formatNumber(Math.abs(change))} ${unit} ${change > 0 ? "warmer" : "cooler"} than the previous day's average`;
+  const observations = recentObservations.data?.series ?? [];
+  const temperatures = observations.flatMap((row) => row.temperature == null ? [] : [row.temperature]);
+  const rainfall = observations.flatMap((row) => row.precipitation == null ? [] : [row.precipitation]);
+  const meanTemperature = temperatures.length
+    ? temperatures.reduce((sum, value) => sum + value, 0) / temperatures.length
+    : null;
+  const totalRainfall = rainfall.length
+    ? rainfall.reduce((sum, value) => sum + value, 0)
+    : null;
 
   return (
     <div className="space-y-5">
@@ -300,21 +338,68 @@ export function ForecastPage() {
               <p className="mt-4 text-xs text-muted-foreground">A positive skill means lower average error than repeating yesterday; a negative skill means higher error. Past performance does not guarantee future results.</p>
             </Card>
 
-            <Card className="p-4 sm:p-5">
-              <h2 className="font-semibold">Forecast archive benchmark</h2>
-              <p className="mt-1 text-xs text-muted-foreground">{data?.external_benchmark.note}</p>
-              <div className="mt-3 divide-y divide-border">
-                {(data?.external_benchmark.by_lead_days ?? []).map((row) => (
-                  <div key={row.lead_days} className="flex items-center justify-between gap-3 py-2 text-sm">
-                    <span>{row.lead_days}-day lead</span>
-                    <span className="text-right font-medium">
-                      {row.available && row.temperature_mae_c != null
-                        ? `${row.temperature_mae_c.toFixed(2)} °C MAE · ${row.n} matched days`
-                        : "Not enough matched data"}
-                    </span>
-                  </div>
-                ))}
+            <Card className="min-w-0 overflow-hidden p-4 sm:p-5">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <h2 className="font-semibold">Recent observed weather</h2>
+                  <p className="mt-1 text-xs text-muted-foreground">Actual daily measurements · {historyStart} to {historyEnd}</p>
+                </div>
+                <Badge tone="ok">Observed</Badge>
               </div>
+              {recentObservations.isLoading ? (
+                <p className="mt-5 text-sm text-muted-foreground">Loading archived observations…</p>
+              ) : recentObservations.isError ? (
+                <div className="mt-5 rounded-xl border border-danger/20 bg-danger/5 p-3">
+                  <p className="text-sm text-danger">
+                    {recentObservations.error instanceof ApiError
+                      ? recentObservations.error.message
+                      : "Observed weather could not be loaded."}
+                  </p>
+                  <button type="button" className="mt-2 text-xs font-medium text-accent underline" onClick={() => recentObservations.refetch()}>
+                    Try again
+                  </button>
+                </div>
+              ) : observations.length ? (
+                <>
+                  <div className="mt-4 grid grid-cols-2 gap-2">
+                    <div className="rounded-xl bg-muted/60 p-3">
+                      <p className="text-xs text-muted-foreground">Observed mean</p>
+                      <p className="mt-1 text-lg font-semibold">
+                        {formatNumber(meanTemperature)} <span className="text-xs font-normal text-muted-foreground">{recentObservations.data?.unit_labels.temperature ?? unit}</span>
+                      </p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">{temperatures.length} observed day{temperatures.length === 1 ? "" : "s"}</p>
+                    </div>
+                    <div className="rounded-xl bg-muted/60 p-3">
+                      <p className="text-xs text-muted-foreground">Observed rainfall</p>
+                      <p className="mt-1 text-lg font-semibold">
+                        {formatNumber(totalRainfall)} <span className="text-xs font-normal text-muted-foreground">{recentObservations.data?.unit_labels.precipitation}</span>
+                      </p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">{rainfall.length} measured day{rainfall.length === 1 ? "" : "s"}</p>
+                    </div>
+                  </div>
+                  <div className="mt-2">
+                    <LineSeriesChart
+                      label="Observed daily mean, low, and high temperatures"
+                      data={observations.map((row) => ({
+                        label: new Intl.DateTimeFormat("en-GB", { timeZone, day: "2-digit", month: "short" }).format(new Date(row.observed_at)),
+                        mean: row.temperature,
+                        low: row.temperature_min,
+                        high: row.temperature_max,
+                      }))}
+                      lines={[
+                        { key: "mean", name: "Mean", color: chartColors.primary },
+                        { key: "high", name: "High", color: chartColors.tertiary },
+                        { key: "low", name: "Low", color: chartColors.secondary },
+                      ]}
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground">Daily observed temperatures in {recentObservations.data?.unit_labels.temperature ?? unit}. Values are from the weather archive, not forecast estimates.</p>
+                </>
+              ) : (
+                <p className="mt-5 rounded-xl bg-muted/60 p-4 text-sm text-muted-foreground">
+                  No archived daily observations are available for this period yet.
+                </p>
+              )}
             </Card>
           </div>
 
