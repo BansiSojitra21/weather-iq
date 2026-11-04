@@ -297,14 +297,15 @@ export function WeatherIntelligencePage() {
     onSuccess: (rule, _body, context) => {
       setActionError(null);
       setSavedRuleMessage(`Saved "${rule.name}". It will notify when the threshold is met.`);
-      if (context) {
-        queryClient.setQueryData<AlertRuleList>(["alert-rules"], (current) => ({
-          items: [
-            ...(current?.items.filter((item) => item.id !== context.temporaryId && item.id !== rule.id) ?? []),
-            rule,
-          ],
-        }));
-      }
+      queryClient.setQueryData<AlertRuleList>(["alert-rules"], (current) => ({
+        items: [
+          ...(current?.items.filter(
+            (item) => item.id !== context?.temporaryId && item.id !== rule.id,
+          ) ?? []),
+          rule,
+        ],
+      }));
+      void queryClient.invalidateQueries({ queryKey: ["alert-rules"] });
       void queryClient.invalidateQueries({ queryKey: ["alerts"] });
     },
     onError: (error, _variables, context) => {
