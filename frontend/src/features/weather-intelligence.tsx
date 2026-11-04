@@ -522,7 +522,7 @@ export function WeatherIntelligencePage() {
                   disabled={rule.id < 0}
                   onClick={() => ruleMutation.mutate({ ruleId: rule.id, enabled: !rule.enabled })}
                 >
-                  {rule.id < 0 ? "Saving…" : rule.enabled ? "Enabled" : "Disabled"}
+                  {rule.enabled ? "Enabled" : "Disabled"}
                 </Button>
               </div>
             ))}
