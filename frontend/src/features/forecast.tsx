@@ -7,7 +7,7 @@ import { useDashboard } from "@/components/dashboard-context";
 import { StatePanel } from "@/components/states";
 import { Badge, Card } from "@/components/ui";
 import { api, ApiError } from "@/lib/api";
-import { dateKeyInTimeZone, formatNumber, formatWhen } from "@/lib/format";
+import { dateKeyInTimeZone, formatNumber } from "@/lib/format";
 
 type TemperatureResponse = {
   model: { name: string; version: string; algorithm: string };
@@ -124,6 +124,12 @@ export function ForecastPage() {
   const selected = data?.predictions.find((item) => item.horizon_days === horizon) ?? data?.predictions[0];
   const holdout = data?.backtest.by_horizon?.find((item) => item.horizon_days === selected?.horizon_days);
   const targetDay = dateKeyInTimeZone(selected?.target_time, timeZone);
+  const targetDate = selected
+    ? new Intl.DateTimeFormat("en-GB", { timeZone, day: "2-digit", month: "short" }).format(new Date(selected.target_time))
+    : "Unavailable";
+  const sourceDate = selected
+    ? new Intl.DateTimeFormat("en-GB", { timeZone, day: "2-digit", month: "short" }).format(new Date(selected.issued_at))
+    : "Unavailable";
   const dailyOutlook = targetDay
     ? weather.data?.daily.find((item) => dateKeyInTimeZone(item.valid_at, timeZone) === targetDay)
     : undefined;
@@ -157,7 +163,7 @@ export function ForecastPage() {
         </div>
         <div className="flex flex-col items-start gap-2 lg:items-end">
           <p className="px-1 text-xs text-muted-foreground lg:text-right">
-            Target: <span className="font-medium text-foreground">{selected ? formatWhen(selected.target_time, timeZone) : "Unavailable"}</span>
+            Target: <span className="font-medium text-foreground">{targetDate}</span>
           </p>
           <div className="flex max-w-full flex-wrap items-center gap-1.5 rounded-2xl border border-border bg-muted/60 p-1" role="group" aria-label="Forecast horizon">
             <span className="pl-3 pr-1 text-xs font-medium text-muted-foreground">Look ahead</span>
@@ -198,7 +204,7 @@ export function ForecastPage() {
                     <ChangeIcon className="h-4 w-4" aria-hidden />
                     {direction}
                   </span>
-                  <span className="text-muted-foreground">Issued {formatWhen(selected.issued_at, timeZone)}</span>
+                  <span className="text-muted-foreground">Based on {sourceDate} daily data</span>
                 </div>
                 <p className="mt-5 max-w-xl text-xs leading-relaxed text-muted-foreground">{data?.limitations}</p>
               </div>
