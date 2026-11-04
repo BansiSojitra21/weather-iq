@@ -7,7 +7,7 @@ import { useDashboard } from "@/components/dashboard-context";
 import { StatePanel } from "@/components/states";
 import { Button, Card, Input, Label, Select } from "@/components/ui";
 import { api, ApiError } from "@/lib/api";
-import { defaultRange, formatNumber, formatWhen } from "@/lib/format";
+import { defaultRange, formatWhen } from "@/lib/format";
 
 const VARIABLES = ["temperature", "precipitation", "humidity", "wind_speed", "pressure", "cloud_cover"] as const;
 
@@ -73,6 +73,21 @@ export function AnalyticsPage() {
   };
   const displayValue = (value: number | null, unit: string | undefined) =>
     value == null ? "—" : `${value.toFixed(2)}${unit ? ` ${unit}` : ""}`;
+  const seasonalRows = summary.data?.seasonal ?? [];
+  const warmestSeason = seasonalRows
+    .filter((row) => row.temperature_mean != null)
+    .reduce<(typeof seasonalRows)[number] | null>(
+      (warmest, row) => warmest == null || row.temperature_mean! > warmest.temperature_mean! ? row : warmest,
+      null,
+    );
+  const wettestSeason = seasonalRows
+    .filter((row) => row.precipitation_total != null)
+    .reduce<(typeof seasonalRows)[number] | null>(
+      (wettest, row) => wettest == null || row.precipitation_total! > wettest.precipitation_total! ? row : wettest,
+      null,
+    );
+  const maxSeasonTemperature = Math.max(0, ...seasonalRows.map((row) => Math.abs(row.temperature_mean ?? 0)));
+  const maxSeasonPrecipitation = Math.max(0, ...seasonalRows.map((row) => row.precipitation_total ?? 0));
   return (
     <>
       <div>
@@ -157,11 +172,52 @@ export function AnalyticsPage() {
           <Card className="min-w-0 p-4">
             <h2 className="mb-3 font-medium">Seasonal comparison</h2>
             <p className="mb-3 text-xs text-muted-foreground">{summary.data.season_note}</p>
-            <ul className="grid gap-2 text-sm">
-              {summary.data.seasonal.map((row) => (
-                <li key={row.season} className="grid gap-1 border-b border-border py-2 last:border-0 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-                  <span>{row.season}</span>
-                  <span>{formatNumber(row.temperature_mean)} · {formatNumber(row.precipitation_total)}</span>
+            <div className="mb-4 grid grid-cols-2 gap-2">
+              <div className="rounded-xl bg-muted/60 p-3">
+                <p className="text-xs text-muted-foreground">Warmest period</p>
+                <p className="mt-1 font-semibold">{warmestSeason?.season ?? "Unavailable"}</p>
+                <p className="text-xs text-muted-foreground">
+                  {displayValue(warmestSeason?.temperature_mean ?? null, summary.data.unit_labels.temperature)} mean
+                </p>
+              </div>
+              <div className="rounded-xl bg-muted/60 p-3">
+                <p className="text-xs text-muted-foreground">Wettest period</p>
+                <p className="mt-1 font-semibold">{wettestSeason?.season ?? "Unavailable"}</p>
+                <p className="text-xs text-muted-foreground">
+                  {displayValue(wettestSeason?.precipitation_total ?? null, summary.data.unit_labels.precipitation)} total
+                </p>
+              </div>
+            </div>
+            <ul className="grid gap-3 text-sm">
+              {seasonalRows.map((row) => (
+                <li key={row.season} className="border-b border-border pb-3 last:border-0 last:pb-0">
+                  <p className="mb-2 font-medium">{row.season}</p>
+                  <div className="grid gap-2 sm:grid-cols-2 sm:gap-4">
+                    <div>
+                      <div className="flex justify-between gap-2 text-xs">
+                        <span className="text-muted-foreground">Mean temperature</span>
+                        <span>{displayValue(row.temperature_mean, summary.data.unit_labels.temperature)}</span>
+                      </div>
+                      <div className="mt-1.5 h-1.5 rounded-full bg-muted">
+                        <div
+                          className="h-full rounded-full bg-accent"
+                          style={{ width: `${maxSeasonTemperature ? (Math.abs(row.temperature_mean ?? 0) / maxSeasonTemperature) * 100 : 0}%` }}
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <div className="flex justify-between gap-2 text-xs">
+                        <span className="text-muted-foreground">Total precipitation</span>
+                        <span>{displayValue(row.precipitation_total, summary.data.unit_labels.precipitation)}</span>
+                      </div>
+                      <div className="mt-1.5 h-1.5 rounded-full bg-muted">
+                        <div
+                          className="h-full rounded-full bg-teal-500"
+                          style={{ width: `${maxSeasonPrecipitation ? (Math.max(0, row.precipitation_total ?? 0) / maxSeasonPrecipitation) * 100 : 0}%` }}
+                        />
+                      </div>
+                    </div>
+                  </div>
                 </li>
               ))}
             </ul>

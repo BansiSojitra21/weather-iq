@@ -28,6 +28,44 @@ export function dateKeyInTimeZone(value: string | null | undefined, timeZone: st
   return year && month && day ? `${year}-${month}-${day}` : null;
 }
 
+export function daylightDetails(
+  sunrise: string | null | undefined,
+  sunset: string | null | undefined,
+  timeZone: string,
+) {
+  if (!sunrise || !sunset) return null;
+  const sunriseDate = new Date(sunrise);
+  const sunsetDate = new Date(sunset);
+  if (Number.isNaN(sunriseDate.getTime()) || Number.isNaN(sunsetDate.getTime())) return null;
+  const durationMinutes = Math.round((sunsetDate.getTime() - sunriseDate.getTime()) / 60_000);
+  if (durationMinutes <= 0) return null;
+
+  const timeOfDayPercent = (date: Date) => {
+    const parts = new Intl.DateTimeFormat("en-GB", {
+      timeZone,
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }).formatToParts(date);
+    const part = (type: Intl.DateTimeFormatPartTypes) => Number(parts.find((item) => item.type === type)?.value);
+    return ((part("hour") * 60 + part("minute")) / 1440) * 100;
+  };
+  const hours = Math.floor(durationMinutes / 60);
+  const minutes = durationMinutes % 60;
+
+  return {
+    duration: `${hours}h ${minutes}m`,
+    solarNoon: new Intl.DateTimeFormat("en-GB", {
+      timeZone,
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }).format(new Date((sunriseDate.getTime() + sunsetDate.getTime()) / 2)),
+    sunrisePercent: timeOfDayPercent(sunriseDate),
+    sunsetPercent: timeOfDayPercent(sunsetDate),
+  };
+}
+
 export function formatNumber(value: number | null | undefined, digits = 1) {
   if (value === null || value === undefined || Number.isNaN(value)) return "—";
   return new Intl.NumberFormat("en-GB", {

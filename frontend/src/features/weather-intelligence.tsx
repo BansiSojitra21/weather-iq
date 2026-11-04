@@ -53,6 +53,7 @@ type AlertRule = {
   description: string;
 };
 
+type AlertRuleInput = Omit<AlertRule, "id">;
 type AlertList = { items: AlertItem[]; total: number; page: number; page_size: number };
 type AlertRuleList = { items: AlertRule[] };
 
@@ -148,6 +149,8 @@ export function WeatherIntelligencePage() {
   const [variable, setVariable] = useState("precipitation_mm");
   const [threshold, setThreshold] = useState("");
   const [severity, setSeverity] = useState("high");
+  const [allCities, setAllCities] = useState(false);
+  const [pendingRuleIds, setPendingRuleIds] = useState<Set<number>>(() => new Set());
   const [alertPage, setAlertPage] = useState(1);
   const [actionError, setActionError] = useState<string | null>(null);
   const [savedRuleMessage, setSavedRuleMessage] = useState<string | null>(null);
@@ -173,26 +176,90 @@ export function WeatherIntelligencePage() {
         method: "PATCH",
         body: JSON.stringify({ enabled }),
       }),
-    onSuccess: async () => {
+    onMutate: async ({ ruleId, enabled }) => {
+      const previousEnabled = queryClient
+        .getQueryData<AlertRuleList>(["alert-rules"])
+        ?.items.find((rule) => rule.id === ruleId)?.enabled;
+      setPendingRuleIds((current) => new Set(current).add(ruleId));
       setActionError(null);
-      await queryClient.invalidateQueries({ queryKey: ["alert-rules"] });
-      await queryClient.invalidateQueries({ queryKey: ["alerts"] });
+      queryClient.setQueryData<AlertRuleList>(["alert-rules"], (current) =>
+        current
+          ? { ...current, items: current.items.map((rule) => rule.id === ruleId ? { ...rule, enabled } : rule) }
+          : current,
+      );
+      await queryClient.cancelQueries({ queryKey: ["alert-rules"] });
+      return { ruleId, previousEnabled };
     },
-    onError: (error) => setActionError(error instanceof Error ? error.message : "Rule could not be updated."),
+    onSuccess: (updatedRule) => {
+      setActionError(null);
+      queryClient.setQueryData<AlertRuleList>(["alert-rules"], (current) =>
+        current
+          ? { ...current, items: current.items.map((rule) => rule.id === updatedRule.id ? updatedRule : rule) }
+          : current,
+      );
+      void queryClient.invalidateQueries({ queryKey: ["alerts"] });
+    },
+    onError: (error, _variables, context) => {
+      const previousEnabled = context?.previousEnabled;
+      if (context && previousEnabled !== undefined) {
+        queryClient.setQueryData<AlertRuleList>(["alert-rules"], (current) =>
+          current
+            ? {
+                ...current,
+                items: current.items.map((rule) =>
+                  rule.id === context.ruleId ? { ...rule, enabled: previousEnabled } : rule,
+                ),
+              }
+            : current,
+        );
+      }
+      setActionError(error instanceof Error ? error.message : "Rule could not be updated.");
+    },
+    onSettled: (_data, _error, variables) => {
+      setPendingRuleIds((current) => {
+        const next = new Set(current);
+        next.delete(variables.ruleId);
+        return next;
+      });
+    },
   });
 
   const createRuleMutation = useMutation({
-    mutationFn: (body: object) =>
+    mutationFn: (body: AlertRuleInput) =>
       api<AlertRule>("alerts/rules", { method: "POST", body: JSON.stringify(body) }),
-    onSuccess: async (rule) => {
+    onMutate: async (body: AlertRuleInput) => {
+      const temporaryId = -Date.now();
+      queryClient.setQueryData<AlertRuleList>(["alert-rules"], (current) => ({
+        items: [...(current?.items ?? []), { ...body, id: temporaryId }],
+      }));
+      await queryClient.cancelQueries({ queryKey: ["alert-rules"] });
+      return { temporaryId };
+    },
+    onSuccess: (rule, _body, context) => {
       setRuleName("");
       setThreshold("");
       setActionError(null);
       setSavedRuleMessage(`Saved "${rule.name}". It will notify when the threshold is met.`);
-      await queryClient.invalidateQueries({ queryKey: ["alert-rules"] });
-      await queryClient.invalidateQueries({ queryKey: ["alerts"] });
+      if (context) {
+        queryClient.setQueryData<AlertRuleList>(["alert-rules"], (current) => ({
+          items: [
+            ...(current?.items.filter((item) => item.id !== context.temporaryId) ?? []),
+            rule,
+          ],
+        }));
+      }
+      void queryClient.invalidateQueries({ queryKey: ["alerts"] });
     },
-    onError: (error) => setActionError(error instanceof Error ? error.message : "Rule could not be saved."),
+    onError: (error, _body, context) => {
+      if (context) {
+        queryClient.setQueryData<AlertRuleList>(["alert-rules"], (current) =>
+          current
+            ? { ...current, items: current.items.filter((item) => item.id !== context.temporaryId) }
+            : current,
+        );
+      }
+      setActionError(error instanceof Error ? error.message : "Rule could not be saved.");
+    },
   });
 
   if (locationId == null) return <StatePanel status="loading" />;
@@ -228,7 +295,7 @@ export function WeatherIntelligencePage() {
     setActionError(null);
     setSavedRuleMessage(null);
     const thresholdValue = Number(threshold);
-    if (!ruleName.trim() || !Number.isFinite(thresholdValue) || locationId == null) return;
+    if (!ruleName.trim() || !Number.isFinite(thresholdValue) || (!allCities && locationId == null)) return;
     const thresholdMetric = units === "imperial"
       ? variable === "temperature_c"
         ? (thresholdValue - 32) * 5 / 9
@@ -238,12 +305,13 @@ export function WeatherIntelligencePage() {
       : thresholdValue;
     createRuleMutation.mutate({
       name: ruleName.trim(),
-      location_id: locationId,
+      location_id: allCities ? null : locationId,
       variable,
       operator: "gt",
       threshold: thresholdMetric,
       severity,
       enabled: true,
+      cooldown_minutes: 720,
       description: `Forecast or observed ${VARIABLE_LABELS[variable].toLowerCase()} exceeds ${thresholdValue}.`,
     });
   }
@@ -350,8 +418,8 @@ export function WeatherIntelligencePage() {
         </p>
       </Card>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card className="p-4 sm:p-5">
+      <div className="grid items-stretch gap-4 lg:grid-cols-2">
+        <Card className="h-full min-h-[520px] p-4 sm:p-5">
           <div className="flex items-start justify-between gap-3">
             <div>
               <h2 className="font-semibold">Threshold rules</h2>
@@ -377,10 +445,10 @@ export function WeatherIntelligencePage() {
                   type="button"
                   variant={rule.enabled ? "secondary" : "ghost"}
                   size="sm"
-                  disabled={ruleMutation.isPending}
+                  disabled={pendingRuleIds.has(rule.id) || rule.id < 0}
                   onClick={() => ruleMutation.mutate({ ruleId: rule.id, enabled: !rule.enabled })}
                 >
-                  {rule.enabled ? "Enabled" : "Disabled"}
+                  {pendingRuleIds.has(rule.id) ? "Saving…" : rule.enabled ? "Enabled" : "Disabled"}
                 </Button>
               </div>
             ))}
@@ -422,15 +490,29 @@ export function WeatherIntelligencePage() {
                 </Select>
               </label>
             </div>
+            <label className="flex cursor-pointer items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={allCities}
+                onChange={(event) => setAllCities(event.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-border accent-accent"
+              />
+              <span>
+                <span className="font-medium">Apply to all cities</span>
+                <span className="mt-0.5 block text-xs text-muted-foreground">
+                  {allCities ? "This rule applies to every saved city." : "By default, this rule applies only to the selected city."}
+                </span>
+              </span>
+            </label>
             <Button type="submit" variant="secondary" disabled={createRuleMutation.isPending}>
-              {createRuleMutation.isPending ? "Saving…" : `Save rule for ${locations.find((item) => item.id === locationId)?.name ?? "selected city"}`}
+              {createRuleMutation.isPending ? "Saving…" : allCities ? "Save rule for all cities" : `Save rule for ${locations.find((item) => item.id === locationId)?.name ?? "selected city"}`}
             </Button>
             <AlertMessage message={actionError} />
             {savedRuleMessage ? <p role="status" className="text-sm text-ok">{savedRuleMessage}</p> : null}
           </form>
         </Card>
 
-        <Card id="alert-history" className="flex min-h-[520px] flex-col p-4 sm:p-5">
+        <Card id="alert-history" className="flex h-full min-h-[520px] flex-col p-4 sm:p-5">
           <div className="flex items-start justify-between gap-3">
             <div>
               <h2 className="font-semibold">Alert history</h2>
@@ -440,7 +522,12 @@ export function WeatherIntelligencePage() {
           </div>
           {alertQuery.isLoading ? <p className="mt-4 text-sm text-muted-foreground">Loading alert history…</p> : null}
           {alertQuery.isError ? <p role="alert" className="mt-4 text-sm text-danger">Alert history could not be loaded.</p> : null}
-          <div className="alert-history-scroll mt-3 min-h-0 flex-1 divide-y divide-border overflow-y-scroll">
+          <div
+            className="alert-history-scroll mt-3 min-h-0 flex-1 divide-y divide-border overflow-y-auto overscroll-contain"
+            role="region"
+            aria-label="Alert history events"
+            tabIndex={0}
+          >
             {(alertQuery.data?.items ?? []).map((alert) => {
               const zone = cityTimeZone(alert.location_id);
               return (

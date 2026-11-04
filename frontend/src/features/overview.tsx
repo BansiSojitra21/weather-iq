@@ -6,7 +6,7 @@ import { useDashboard } from "@/components/dashboard-context";
 import { StatePanel } from "@/components/states";
 import { Badge, Card } from "@/components/ui";
 import { api, ApiError } from "@/lib/api";
-import { dateKeyInTimeZone, formatNumber, formatWhen } from "@/lib/format";
+import { dateKeyInTimeZone, daylightDetails, formatNumber, formatWhen } from "@/lib/format";
 
 type CurrentResponse = {
   observation: null | {
@@ -112,6 +112,11 @@ export function OverviewPage() {
     return <StatePanel status="empty" message="No weather has been ingested for this location yet. Run scripts/bootstrap.py." />;
   }
   const labels = data?.unit_labels;
+  const daylight = daylightDetails(
+    data?.today_forecast?.sunrise,
+    data?.today_forecast?.sunset,
+    timeZone,
+  );
   const hourly = (data?.hourly ?? []).map((row) => ({
     label: formatWhen(row.valid_at, timeZone),
     temperature: row.temperature,
@@ -186,6 +191,37 @@ export function OverviewPage() {
             <div className="flex justify-between gap-3"><dt>Sunrise</dt><dd>{formatWhen(data?.today_forecast?.sunrise, timeZone)}</dd></div>
             <div className="flex justify-between gap-3"><dt>Sunset</dt><dd>{formatWhen(data?.today_forecast?.sunset, timeZone)}</dd></div>
           </dl>
+          {daylight ? (
+            <div className="mt-5 rounded-xl bg-muted/60 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs text-muted-foreground">Daylight duration</p>
+                  <p className="mt-1 text-lg font-semibold">{daylight.duration}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-muted-foreground">Solar noon</p>
+                  <p className="mt-1 text-sm font-medium">{daylight.solarNoon}</p>
+                </div>
+              </div>
+              <div
+                className="relative mt-3 h-2 overflow-hidden rounded-full bg-foreground/10"
+                role="img"
+                aria-label={`Daylight from ${formatWhen(data?.today_forecast?.sunrise, timeZone)} to ${formatWhen(data?.today_forecast?.sunset, timeZone)}`}
+              >
+                <span
+                  className="absolute inset-y-0 rounded-full bg-accent"
+                  style={{
+                    left: `${daylight.sunrisePercent}%`,
+                    width: `${daylight.sunsetPercent - daylight.sunrisePercent}%`,
+                  }}
+                />
+              </div>
+              <div className="mt-1 flex justify-between text-[10px] text-muted-foreground">
+                <span>00:00</span>
+                <span>24:00</span>
+              </div>
+            </div>
+          ) : null}
           <p className="mt-4 text-xs text-muted-foreground">Sunrise and sunset come from the daily forecast, not from a local sensor.</p>
         </Card>
       </div>

@@ -315,6 +315,39 @@ export function ForecastPage() {
                 ))}
               </div>
               <p className="mt-4 text-xs text-muted-foreground">A positive skill means lower average error than repeating yesterday; a negative skill means higher error. Past performance does not guarantee future results.</p>
+              {holdout ? (() => {
+                const comparisons = [
+                  { label: "WeatherIQ model", mae: holdout.test.mae },
+                  { label: "Repeat yesterday", mae: holdout.persistence_test.mae },
+                  { label: "Seasonal pattern", mae: holdout.fourier_test.mae },
+                ];
+                const maxError = Math.max(...comparisons.map((item) => item.mae), 0.01);
+                return (
+                  <div className="mt-4 rounded-xl bg-muted/60 p-3">
+                    <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+                      <h3 className="text-sm font-medium">Error against simple benchmarks</h3>
+                      <span className="text-xs text-muted-foreground">MAE in °C · lower is better</span>
+                    </div>
+                    <div className="grid gap-3">
+                      {comparisons.map((item) => (
+                        <div key={item.label} className="grid grid-cols-[7rem_minmax(0,1fr)_3.5rem] items-center gap-2 text-xs">
+                          <span className="text-muted-foreground">{item.label}</span>
+                          <div className="h-2 rounded-full bg-foreground/10">
+                            <div
+                              className="h-full rounded-full bg-accent"
+                              style={{ width: `${Math.max(2, (item.mae / maxError) * 100)}%` }}
+                            />
+                          </div>
+                          <span className="text-right font-medium">{item.mae.toFixed(2)}°</span>
+                        </div>
+                      ))}
+                    </div>
+                    <p className="mt-3 text-xs text-muted-foreground">
+                      Compared on the same {holdout.test.n} held-out days for the {selected.horizon_days}-day lead.
+                    </p>
+                  </div>
+                );
+              })() : null}
             </Card>
 
             <Card className="min-w-0 overflow-hidden p-4 sm:p-5">
