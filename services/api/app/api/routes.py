@@ -11,7 +11,6 @@ from app.core.errors import WeatherIQError
 from app.core.security import require_api_key
 from app.db.models import Alert, AlertRule, AnomalyEvent, Location, WeatherReport
 from app.db.session import check_database, get_db
-from app.services.alert_schedule import evaluate_changed_rules
 from app.services.alerts import alert_out, evaluate_rules, rule_out, update_alert_status
 from app.services.analytics import (
     correlation,
@@ -498,7 +497,7 @@ def list_alerts(
 
 
 @router.post("/alerts/rules", dependencies=[Depends(require_api_key)])
-def create_rule(body: RuleIn, background_tasks: BackgroundTasks, session: Session = Depends(get_db)) -> dict:
+def create_rule(body: RuleIn, session: Session = Depends(get_db)) -> dict:
     if body.operator not in {"gt", "gte", "lt", "lte"}:
         raise WeatherIQError("operator must be gt, gte, lt, or lte.", code="invalid_operator")
     if body.severity not in ALERT_SEVERITIES:
@@ -508,11 +507,7 @@ def create_rule(body: RuleIn, background_tasks: BackgroundTasks, session: Sessio
     rule = AlertRule(**body.model_dump())
     session.add(rule)
     session.flush()
-    evaluation = None
-    if rule.enabled:
-        background_tasks.add_task(evaluate_changed_rules, rule.location_id)
-        evaluation = {"status": "scheduled"}
-    return {**rule_out(rule), "evaluation": evaluation}
+    return rule_out(rule)
 
 
 @router.get("/alerts/rules")
@@ -522,9 +517,7 @@ def list_rules(session: Session = Depends(get_db)) -> dict:
 
 
 @router.patch("/alerts/rules/{rule_id}", dependencies=[Depends(require_api_key)])
-def patch_rule(
-    rule_id: int, body: RulePatch, background_tasks: BackgroundTasks, session: Session = Depends(get_db)
-) -> dict:
+def patch_rule(rule_id: int, body: RulePatch, session: Session = Depends(get_db)) -> dict:
     rule = session.get(AlertRule, rule_id)
     if rule is None:
         raise WeatherIQError("Rule not found.", status_code=404, code="not_found")
@@ -535,11 +528,7 @@ def patch_rule(
         setattr(rule, key, value)
     rule.updated_at = datetime.now(timezone.utc)
     session.flush()
-    evaluation = None
-    if changes.get("enabled") is True:
-        background_tasks.add_task(evaluate_changed_rules, rule.location_id)
-        evaluation = {"status": "scheduled"}
-    return {**rule_out(rule), "evaluation": evaluation}
+    return rule_out(rule)
 
 
 @router.patch("/alerts/{alert_id}", dependencies=[Depends(require_api_key)])

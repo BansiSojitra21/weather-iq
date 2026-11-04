@@ -15,28 +15,6 @@ logger = logging.getLogger("weatheriq")
 INTERVAL = timedelta(minutes=5)
 
 
-def evaluate_changed_rules(location_id: int | None) -> None:
-    if db_session.SessionLocal is None:
-        db_session.init_database()
-    assert db_session.SessionLocal is not None
-    session = db_session.SessionLocal()
-    try:
-        result = evaluate_rules(session, location_id)
-        session.commit()
-        logger.info(
-            "Background rule evaluation completed location_id=%s created=%s skipped_duplicates=%s",
-            location_id,
-            result["created"],
-            result["skipped_duplicates"],
-        )
-    except Exception:
-        session.rollback()
-        logger.exception("Background rule evaluation failed location_id=%s", location_id)
-        raise
-    finally:
-        session.close()
-
-
 def run_alert_check() -> dict:
     if db_session.SessionLocal is None:
         db_session.init_database()

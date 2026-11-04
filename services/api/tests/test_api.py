@@ -107,7 +107,7 @@ def test_alert_rule_accepts_requested_severity_levels(client):
     assert response.json()["severity"] == "critical"
 
 
-def test_creating_matching_enabled_rule_schedules_immediate_evaluation(client, database):
+def test_creating_matching_enabled_rule_does_not_wait_for_alert_evaluation(client, database):
     from datetime import datetime, timezone
 
     location = client.get("/api/v1/locations").json()["items"][0]
@@ -137,10 +137,11 @@ def test_creating_matching_enabled_rule_schedules_immediate_evaluation(client, d
     )
 
     assert response.status_code == 200
-    assert response.json()["evaluation"] == {"status": "scheduled"}
+    assert response.json()["name"] == "Warm today"
+    assert "evaluation" not in response.json()
 
 
-def test_enabling_rule_schedules_evaluation_and_disabling_does_not(client):
+def test_enabling_and_disabling_rule_returns_without_evaluation(client):
     location = client.get("/api/v1/locations").json()["items"][0]
     headers = {"X-API-Key": "test-key"}
     created = client.post(
@@ -161,8 +162,10 @@ def test_enabling_rule_schedules_evaluation_and_disabling_does_not(client):
     enabled = client.patch(f"/api/v1/alerts/rules/{rule_id}", headers=headers, json={"enabled": True})
     disabled = client.patch(f"/api/v1/alerts/rules/{rule_id}", headers=headers, json={"enabled": False})
 
-    assert enabled.json()["evaluation"] == {"status": "scheduled"}
-    assert disabled.json()["evaluation"] is None
+    assert enabled.json()["enabled"] is True
+    assert disabled.json()["enabled"] is False
+    assert "evaluation" not in enabled.json()
+    assert "evaluation" not in disabled.json()
 
 
 def test_monitoring_and_correlation_handle_sqlite_timestamps(client, database):
