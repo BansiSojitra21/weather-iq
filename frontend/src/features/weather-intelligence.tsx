@@ -62,6 +62,18 @@ type CreateRuleMutationInput = {
   formRevision: number;
 };
 
+function matchesRule(rule: AlertRule, candidate: AlertRule) {
+  return rule.name === candidate.name
+    && rule.location_id === candidate.location_id
+    && rule.variable === candidate.variable
+    && rule.operator === candidate.operator
+    && rule.threshold === candidate.threshold
+    && rule.severity === candidate.severity
+    && rule.enabled === candidate.enabled
+    && rule.cooldown_minutes === candidate.cooldown_minutes
+    && rule.description === candidate.description;
+}
+
 function isTemporaryRule(rule: AlertRule) {
   return /^(?:temp(?:orary)?|test|sample)(?:\s+(?:rule|data))?$/i.test(rule.name.trim());
 }
@@ -175,11 +187,34 @@ export function WeatherIntelligencePage() {
   });
   const rulesQuery = useQuery({
     queryKey: ["alert-rules"],
-    queryFn: () => api<AlertRuleList>("alerts/rules"),
+    queryFn: async () => {
+      const serverRules = await api<AlertRuleList>("alerts/rules");
+      const optimisticRules = queryClient
+        .getQueryData<AlertRuleList>(["alert-rules"])
+        ?.items.filter((rule) => rule.id < 0) ?? [];
+      return {
+        ...serverRules,
+        items: [
+          ...serverRules.items,
+          ...optimisticRules.filter(
+            (optimisticRule) => !serverRules.items.some((rule) => matchesRule(rule, optimisticRule)),
+          ),
+        ],
+      };
+    },
+    refetchInterval: (query) => query.state.data?.items.some((rule) => rule.id < 0) ? 2_000 : false,
   });
   const applicableRules = (rulesQuery.data?.items ?? []).filter(
     (rule) => rule.location_id == null || rule.location_id === locationId,
   );
+  const confirmedPendingRule = savedRuleMessage?.startsWith('Saving "')
+    ? rulesQuery.data?.items.find(
+        (rule) => rule.id > 0 && savedRuleMessage === `Saving "${rule.name}"…`,
+      )
+    : undefined;
+  const visibleSavedRuleMessage = confirmedPendingRule
+    ? `Saved "${confirmedPendingRule.name}". It will notify when the threshold is met.`
+    : savedRuleMessage;
   const visibleRules = applicableRules.filter((rule) => !isTemporaryRule(rule));
   const hiddenTemporaryRules = applicableRules.length - visibleRules.length;
 
@@ -265,7 +300,7 @@ export function WeatherIntelligencePage() {
       if (context) {
         queryClient.setQueryData<AlertRuleList>(["alert-rules"], (current) => ({
           items: [
-            ...(current?.items.filter((item) => item.id !== context.temporaryId) ?? []),
+            ...(current?.items.filter((item) => item.id !== context.temporaryId && item.id !== rule.id) ?? []),
             rule,
           ],
         }));
@@ -273,13 +308,16 @@ export function WeatherIntelligencePage() {
       void queryClient.invalidateQueries({ queryKey: ["alerts"] });
     },
     onError: (error, _variables, context) => {
+      const stillPending = context && queryClient
+        .getQueryData<AlertRuleList>(["alert-rules"])
+        ?.items.some((item) => item.id === context.temporaryId);
       if (context) {
         queryClient.setQueryData<AlertRuleList>(["alert-rules"], (current) =>
           current
             ? { ...current, items: current.items.filter((item) => item.id !== context.temporaryId) }
             : current,
         );
-        if (createFormRevision.current === context.formRevision) {
+        if (stillPending && createFormRevision.current === context.formRevision) {
           setRuleName(context.formValues.name);
           setThreshold(context.formValues.threshold);
           setVariable(context.formValues.variable);
@@ -287,6 +325,7 @@ export function WeatherIntelligencePage() {
           setAllCities(context.formValues.allCities);
         }
       }
+      if (!stillPending) return;
       setSavedRuleMessage(null);
       setActionError(error instanceof Error ? error.message : "Rule could not be saved.");
     },
@@ -543,7 +582,7 @@ export function WeatherIntelligencePage() {
               {allCities ? "Save rule for all cities" : `Save rule for ${locations.find((item) => item.id === locationId)?.name ?? "selected city"}`}
             </Button>
             <AlertMessage message={actionError} />
-            {savedRuleMessage ? <p role="status" className="text-sm text-ok">{savedRuleMessage}</p> : null}
+            {visibleSavedRuleMessage ? <p role="status" className="text-sm text-ok">{visibleSavedRuleMessage}</p> : null}
           </form>
         </Card>
 
