@@ -170,6 +170,7 @@ export function WeatherIntelligencePage() {
   const ruleMutationVersions = useRef(new Map<number, number>());
   const ruleMutationQueue = useRef(new Map<number, Promise<void>>());
   const createRuleId = useRef(0);
+  const locallyCreatedRules = useRef(new Map<number, AlertRule>());
   const createFormRevision = useRef(0);
   const [alertPageByLocation, setAlertPageByLocation] = useState<Record<number, number>>({});
   const alertPage = locationId == null ? 1 : alertPageByLocation[locationId] ?? 1;
@@ -189,6 +190,12 @@ export function WeatherIntelligencePage() {
     queryKey: ["alert-rules"],
     queryFn: async () => {
       const serverRules = await api<AlertRuleList>("alerts/rules");
+      const serverRuleIds = new Set(serverRules.items.map((rule) => rule.id));
+      const confirmedLocalRules = [...locallyCreatedRules.current.values()].filter((rule) =>
+        serverRuleIds.has(rule.id),
+      );
+      confirmedLocalRules.forEach((rule) => locallyCreatedRules.current.delete(rule.id));
+      const unsyncedLocalRules = [...locallyCreatedRules.current.values()];
       const optimisticRules = queryClient
         .getQueryData<AlertRuleList>(["alert-rules"])
         ?.items.filter((rule) => rule.id < 0) ?? [];
@@ -196,13 +203,17 @@ export function WeatherIntelligencePage() {
         ...serverRules,
         items: [
           ...serverRules.items,
+          ...unsyncedLocalRules,
           ...optimisticRules.filter(
             (optimisticRule) => !serverRules.items.some((rule) => matchesRule(rule, optimisticRule)),
           ),
         ],
       };
     },
-    refetchInterval: (query) => query.state.data?.items.some((rule) => rule.id < 0) ? 2_000 : false,
+    refetchInterval: (query) =>
+      locallyCreatedRules.current.size > 0 || query.state.data?.items.some((rule) => rule.id < 0)
+        ? 2_000
+        : false,
   });
   const applicableRules = (rulesQuery.data?.items ?? []).filter(
     (rule) => rule.location_id == null || rule.location_id === locationId,
@@ -295,6 +306,7 @@ export function WeatherIntelligencePage() {
       return { temporaryId, formValues, formRevision };
     },
     onSuccess: (rule, _body, context) => {
+      locallyCreatedRules.current.set(rule.id, rule);
       setActionError(null);
       setSavedRuleMessage(`Saved "${rule.name}". It will notify when the threshold is met.`);
       queryClient.setQueryData<AlertRuleList>(["alert-rules"], (current) => ({
