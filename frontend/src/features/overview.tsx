@@ -6,7 +6,7 @@ import { useDashboard } from "@/components/dashboard-context";
 import { StatePanel } from "@/components/states";
 import { Badge, Card } from "@/components/ui";
 import { api, ApiError } from "@/lib/api";
-import { formatNumber, formatWhen } from "@/lib/format";
+import { dateKeyInTimeZone, formatNumber, formatWhen } from "@/lib/format";
 
 type CurrentResponse = {
   observation: null | {
@@ -63,6 +63,12 @@ function Metric({
 export function OverviewPage() {
   const { locationId, units, timeZone, location } = useDashboard();
   const cacheKey = `weatheriq.cache.current.${locationId}.${units}`;
+  const needsRefresh = (current: CurrentResponse | undefined) => {
+    if (!current?.freshness.retrieved_at) return true;
+    const retrievedDate = dateKeyInTimeZone(current.freshness.retrieved_at, timeZone);
+    const today = dateKeyInTimeZone(new Date().toISOString(), timeZone);
+    return current.freshness.stale === true || (retrievedDate !== null && today !== null && retrievedDate < today);
+  };
   const query = useQuery({
     queryKey: ["current", locationId, units],
     enabled: locationId != null,
@@ -86,7 +92,7 @@ export function OverviewPage() {
     staleTime: 0,
     refetchInterval: (query) => {
       const current = query.state.data;
-      return current?.hourly.length && current.daily.length ? false : 15_000;
+      return current?.hourly.length && current.daily.length && !needsRefresh(current) ? false : 15_000;
     },
     refetchIntervalInBackground: false,
   });

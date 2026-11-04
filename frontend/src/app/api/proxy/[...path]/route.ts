@@ -43,7 +43,8 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
     const isGet = request.method === "GET" || request.method === "HEAD";
     const isLocations = path.length === 1 && path[0] === "locations";
     const isAlertData = path[0] === "alerts";
-    const cacheable = isGet && !isAlertData;
+    const isWeatherSnapshot = path[0] === "weather" && ["current", "forecast"].includes(path[1] ?? "");
+    const cacheable = isGet && !isAlertData && !isWeatherSnapshot;
     const revalidateSeconds = isLocations ? 86400 : 300;
     const response = await fetch(target, {
       method: request.method,
