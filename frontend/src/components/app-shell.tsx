@@ -77,7 +77,7 @@ function Shell({ children }: { children: ReactNode }) {
               className="w-28 shrink-0"
               menuClassName="w-56 max-w-[calc(100vw-2rem)]"
             />
-            <NotificationCenter locations={locations} />
+            <NotificationCenter locations={locations} locationId={locationId} />
             <SelectionDropdown
               label="Units"
               value={units}
@@ -113,7 +113,7 @@ function Shell({ children }: { children: ReactNode }) {
               className="w-28 shrink-0"
               menuClassName="w-56 max-w-[calc(100vw-2rem)]"
             />
-            <NotificationCenter locations={locations} />
+            <NotificationCenter locations={locations} locationId={locationId} />
             <SelectionDropdown
               label="Units"
               value={units}
@@ -141,7 +141,7 @@ function Shell({ children }: { children: ReactNode }) {
                   className="w-full"
                   menuClassName="w-56 max-w-[calc(100vw-2rem)]"
                 />
-                <NotificationCenter locations={locations} />
+                <NotificationCenter locations={locations} locationId={locationId} />
                 <SelectionDropdown
                   label="Units"
                   value={units}

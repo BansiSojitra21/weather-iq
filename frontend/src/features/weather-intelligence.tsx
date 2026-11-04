@@ -151,7 +151,8 @@ export function WeatherIntelligencePage() {
   const [severity, setSeverity] = useState("high");
   const [allCities, setAllCities] = useState(false);
   const [pendingRuleIds, setPendingRuleIds] = useState<Set<number>>(() => new Set());
-  const [alertPage, setAlertPage] = useState(1);
+  const [alertPageByLocation, setAlertPageByLocation] = useState<Record<number, number>>({});
+  const alertPage = locationId == null ? 1 : alertPageByLocation[locationId] ?? 1;
   const [actionError, setActionError] = useState<string | null>(null);
   const [savedRuleMessage, setSavedRuleMessage] = useState<string | null>(null);
 
@@ -160,15 +161,19 @@ export function WeatherIntelligencePage() {
     queryFn: () => api<RiskOverview>("risk/overview"),
   });
   const alertQuery = useQuery({
-    queryKey: ["alerts", alertPage],
-    queryFn: () => api<AlertList>(`alerts?page=${alertPage}&page_size=20`),
+    queryKey: ["alerts", locationId, alertPage],
+    queryFn: () => api<AlertList>(`alerts?page=${alertPage}&page_size=20&location_id=${locationId}`),
+    enabled: locationId != null,
   });
   const rulesQuery = useQuery({
     queryKey: ["alert-rules"],
     queryFn: () => api<AlertRuleList>("alerts/rules"),
   });
-  const visibleRules = (rulesQuery.data?.items ?? []).filter((rule) => !isTemporaryRule(rule));
-  const hiddenTemporaryRules = (rulesQuery.data?.items.length ?? 0) - visibleRules.length;
+  const applicableRules = (rulesQuery.data?.items ?? []).filter(
+    (rule) => rule.location_id == null || rule.location_id === locationId,
+  );
+  const visibleRules = applicableRules.filter((rule) => !isTemporaryRule(rule));
+  const hiddenTemporaryRules = applicableRules.length - visibleRules.length;
 
   const ruleMutation = useMutation({
     mutationFn: ({ ruleId, enabled }: { ruleId: number; enabled: boolean }) =>
@@ -278,7 +283,7 @@ export function WeatherIntelligencePage() {
   const selectedRisk = riskItems.find((item) => item.location_id === locationId);
   const cityTimeZone = (cityId: number) => locations.find((item) => item.id === cityId)?.timezone ?? timeZone;
   const availableFactors = selectedRisk?.factors ?? {};
-  const alertPages = Math.max(1, Math.ceil((alertQuery.data?.total ?? 0) / (alertQuery.data?.page_size ?? 20)));
+  const alertPageCount = Math.max(1, Math.ceil((alertQuery.data?.total ?? 0) / (alertQuery.data?.page_size ?? 20)));
   const factorCards: { label: string; factor: RiskFactor | undefined; detail: string }[] = [
     {
       label: "Rain",
@@ -438,7 +443,7 @@ export function WeatherIntelligencePage() {
                   <p className="truncate text-sm font-medium">{rule.name}</p>
                   <p className="mt-1 text-xs text-muted-foreground">
                     {VARIABLE_LABELS[rule.variable] ?? rule.variable} {operatorLabel(rule.operator)} {formatThreshold(rule, units)} · {severityLabel(rule.severity)}
-                    {rule.location_id == null ? " · all cities" : rule.location_id === locationId ? " · selected city" : " · another city"}
+                    {rule.location_id == null ? " · all cities" : ` · ${locations.find((item) => item.id === rule.location_id)?.name ?? "selected city"}`}
                   </p>
                 </div>
                 <Button
@@ -516,7 +521,7 @@ export function WeatherIntelligencePage() {
           <div className="flex items-start justify-between gap-3">
             <div>
               <h2 className="font-semibold">Alert history</h2>
-              <p className="mt-1 text-xs text-muted-foreground">Recent events from your enabled alert rules.</p>
+              <p className="mt-1 text-xs text-muted-foreground">Recent events for {locations.find((item) => item.id === locationId)?.name ?? "the selected city"}.</p>
             </div>
             <Badge tone="accent">{alertQuery.data?.total ?? "…"}</Badge>
           </div>
@@ -547,11 +552,11 @@ export function WeatherIntelligencePage() {
               <p className="py-4 text-sm text-muted-foreground">No alert events have been recorded yet. Enabled rules are checked automatically every five minutes.</p>
             ) : null}
           </div>
-          {alertQuery.data && alertPages > 1 ? (
+          {alertQuery.data && alertPageCount > 1 ? (
             <div className="mt-3 flex items-center justify-between border-t border-border pt-3 text-xs">
-              <Button type="button" variant="secondary" size="sm" disabled={alertPage <= 1} onClick={() => setAlertPage((page) => page - 1)}>Previous</Button>
-              <span className="text-muted-foreground">Page {alertPage} of {alertPages} · {alertQuery.data.total} alerts</span>
-              <Button type="button" variant="secondary" size="sm" disabled={alertPage >= alertPages} onClick={() => setAlertPage((page) => page + 1)}>Next</Button>
+              <Button type="button" variant="secondary" size="sm" disabled={alertPage <= 1} onClick={() => locationId != null && setAlertPageByLocation((pages) => ({ ...pages, [locationId]: alertPage - 1 }))}>Previous</Button>
+              <span className="text-muted-foreground">Page {alertPage} of {alertPageCount} · {alertQuery.data.total} alerts</span>
+              <Button type="button" variant="secondary" size="sm" disabled={alertPage >= alertPageCount} onClick={() => locationId != null && setAlertPageByLocation((pages) => ({ ...pages, [locationId]: alertPage + 1 }))}>Next</Button>
             </div>
           ) : null}
         </Card>

@@ -103,7 +103,7 @@ export function AlertNotificationWatcher() {
   return null;
 }
 
-export function NotificationCenter({ locations }: { locations: Location[] }) {
+export function NotificationCenter({ locations, locationId }: { locations: Location[]; locationId: number | null }) {
   const [open, setOpen] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const enabled = useSyncExternalStore(
@@ -124,9 +124,9 @@ export function NotificationCenter({ locations }: { locations: Location[] }) {
   );
   const notificationsActive = enabled && permission === "granted";
   const alertsQuery = useQuery({
-    queryKey: ["alerts", "notification-center"],
-    queryFn: () => api<AlertList>("alerts?page=1&page_size=5"),
-    enabled: open,
+    queryKey: ["alerts", "notification-center", locationId],
+    queryFn: () => api<AlertList>(`alerts?page=1&page_size=5&location_id=${locationId}`),
+    enabled: open && locationId != null,
     refetchInterval: open ? 30_000 : false,
   });
   async function toggleNotifications() {
