@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import { BellRing, ShieldAlert } from "lucide-react";
 import { useDashboard } from "@/components/dashboard-context";
 import { StatePanel } from "@/components/states";
@@ -150,7 +150,8 @@ export function WeatherIntelligencePage() {
   const [threshold, setThreshold] = useState("");
   const [severity, setSeverity] = useState("high");
   const [allCities, setAllCities] = useState(false);
-  const [pendingRuleIds, setPendingRuleIds] = useState<Set<number>>(() => new Set());
+  const ruleMutationVersions = useRef(new Map<number, number>());
+  const ruleMutationQueue = useRef(new Map<number, Promise<void>>());
   const [alertPageByLocation, setAlertPageByLocation] = useState<Record<number, number>>({});
   const alertPage = locationId == null ? 1 : alertPageByLocation[locationId] ?? 1;
   const [actionError, setActionError] = useState<string | null>(null);
@@ -176,26 +177,43 @@ export function WeatherIntelligencePage() {
   const hiddenTemporaryRules = applicableRules.length - visibleRules.length;
 
   const ruleMutation = useMutation({
-    mutationFn: ({ ruleId, enabled }: { ruleId: number; enabled: boolean }) =>
-      api<AlertRule>(`alerts/rules/${ruleId}`, {
-        method: "PATCH",
-        body: JSON.stringify({ enabled }),
-      }),
+    mutationFn: async ({ ruleId, enabled }: { ruleId: number; enabled: boolean }) => {
+      const previousRequest = ruleMutationQueue.current.get(ruleId) ?? Promise.resolve();
+      let releaseRequest!: () => void;
+      const currentRequest = new Promise<void>((resolve) => {
+        releaseRequest = resolve;
+      });
+      ruleMutationQueue.current.set(ruleId, currentRequest);
+      await previousRequest;
+      try {
+        return await api<AlertRule>(`alerts/rules/${ruleId}`, {
+          method: "PATCH",
+          body: JSON.stringify({ enabled }),
+        });
+      } finally {
+        releaseRequest();
+        if (ruleMutationQueue.current.get(ruleId) === currentRequest) {
+          ruleMutationQueue.current.delete(ruleId);
+        }
+      }
+    },
     onMutate: ({ ruleId, enabled }) => {
       void queryClient.cancelQueries({ queryKey: ["alert-rules"] });
       const previousEnabled = queryClient
         .getQueryData<AlertRuleList>(["alert-rules"])
         ?.items.find((rule) => rule.id === ruleId)?.enabled;
-      setPendingRuleIds((current) => new Set(current).add(ruleId));
+      const mutationVersion = (ruleMutationVersions.current.get(ruleId) ?? 0) + 1;
+      ruleMutationVersions.current.set(ruleId, mutationVersion);
       setActionError(null);
       queryClient.setQueryData<AlertRuleList>(["alert-rules"], (current) =>
         current
           ? { ...current, items: current.items.map((rule) => rule.id === ruleId ? { ...rule, enabled } : rule) }
           : current,
       );
-      return { ruleId, previousEnabled };
+      return { ruleId, previousEnabled, mutationVersion };
     },
-    onSuccess: (updatedRule) => {
+    onSuccess: (updatedRule, _variables, context) => {
+      if (context?.mutationVersion !== ruleMutationVersions.current.get(updatedRule.id)) return;
       setActionError(null);
       queryClient.setQueryData<AlertRuleList>(["alert-rules"], (current) =>
         current
@@ -205,8 +223,9 @@ export function WeatherIntelligencePage() {
       void queryClient.invalidateQueries({ queryKey: ["alerts"] });
     },
     onError: (error, _variables, context) => {
+      if (!context || context.mutationVersion !== ruleMutationVersions.current.get(context.ruleId)) return;
       const previousEnabled = context?.previousEnabled;
-      if (context && previousEnabled !== undefined) {
+      if (previousEnabled !== undefined) {
         queryClient.setQueryData<AlertRuleList>(["alert-rules"], (current) =>
           current
             ? {
@@ -219,13 +238,6 @@ export function WeatherIntelligencePage() {
         );
       }
       setActionError(error instanceof Error ? error.message : "Rule could not be updated.");
-    },
-    onSettled: (_data, _error, variables) => {
-      setPendingRuleIds((current) => {
-        const next = new Set(current);
-        next.delete(variables.ruleId);
-        return next;
-      });
     },
   });
 
@@ -450,10 +462,10 @@ export function WeatherIntelligencePage() {
                   type="button"
                   variant={rule.enabled ? "secondary" : "ghost"}
                   size="sm"
-                  disabled={pendingRuleIds.has(rule.id) || rule.id < 0}
+                  disabled={rule.id < 0}
                   onClick={() => ruleMutation.mutate({ ruleId: rule.id, enabled: !rule.enabled })}
                 >
-                  {pendingRuleIds.has(rule.id) ? "Saving…" : rule.enabled ? "Enabled" : "Disabled"}
+                  {rule.enabled ? "Enabled" : "Disabled"}
                 </Button>
               </div>
             ))}
