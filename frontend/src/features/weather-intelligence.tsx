@@ -181,7 +181,8 @@ export function WeatherIntelligencePage() {
         method: "PATCH",
         body: JSON.stringify({ enabled }),
       }),
-    onMutate: async ({ ruleId, enabled }) => {
+    onMutate: ({ ruleId, enabled }) => {
+      void queryClient.cancelQueries({ queryKey: ["alert-rules"] });
       const previousEnabled = queryClient
         .getQueryData<AlertRuleList>(["alert-rules"])
         ?.items.find((rule) => rule.id === ruleId)?.enabled;
@@ -192,7 +193,6 @@ export function WeatherIntelligencePage() {
           ? { ...current, items: current.items.map((rule) => rule.id === ruleId ? { ...rule, enabled } : rule) }
           : current,
       );
-      await queryClient.cancelQueries({ queryKey: ["alert-rules"] });
       return { ruleId, previousEnabled };
     },
     onSuccess: (updatedRule) => {
@@ -232,12 +232,12 @@ export function WeatherIntelligencePage() {
   const createRuleMutation = useMutation({
     mutationFn: (body: AlertRuleInput) =>
       api<AlertRule>("alerts/rules", { method: "POST", body: JSON.stringify(body) }),
-    onMutate: async (body: AlertRuleInput) => {
+    onMutate: (body: AlertRuleInput) => {
+      void queryClient.cancelQueries({ queryKey: ["alert-rules"] });
       const temporaryId = -Date.now();
       queryClient.setQueryData<AlertRuleList>(["alert-rules"], (current) => ({
         items: [...(current?.items ?? []), { ...body, id: temporaryId }],
       }));
-      await queryClient.cancelQueries({ queryKey: ["alert-rules"] });
       return { temporaryId };
     },
     onSuccess: (rule, _body, context) => {
