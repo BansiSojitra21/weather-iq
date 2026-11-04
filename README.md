@@ -1,6 +1,6 @@
 # WeatherIQ
 
-WeatherIQ is a weather monitoring and analytics application. It combines observed and forecast weather data with forecasting, anomaly detection, risk indicators, and configurable threshold alerts.
+        WeatherIQ is a weather monitoring and analytics application. It combines observed and forecast weather data with forecasting, anomaly detection, risk indicators, and configurable threshold alerts.
 
 ## Features
 

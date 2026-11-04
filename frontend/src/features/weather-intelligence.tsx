@@ -74,10 +74,6 @@ function matchesRule(rule: AlertRule, candidate: AlertRule) {
     && rule.description === candidate.description;
 }
 
-function isTemporaryRule(rule: AlertRule) {
-  return /^(?:temp(?:orary)?|test|sample)(?:\s+(?:rule|data))?$/i.test(rule.name.trim());
-}
-
 const SEVERITY_LABELS: Record<string, string> = {
   info: "Low",
   low: "Low",
@@ -226,8 +222,7 @@ export function WeatherIntelligencePage() {
   const visibleSavedRuleMessage = confirmedPendingRule
     ? `Saved "${confirmedPendingRule.name}". It will notify when the threshold is met.`
     : savedRuleMessage;
-  const visibleRules = applicableRules.filter((rule) => !isTemporaryRule(rule));
-  const hiddenTemporaryRules = applicableRules.length - visibleRules.length;
+  const visibleRules = applicableRules;
 
   const ruleMutation = useMutation({
     mutationFn: async ({ ruleId, enabled }: { ruleId: number; enabled: boolean }) => {
@@ -511,9 +506,6 @@ export function WeatherIntelligencePage() {
             <div>
               <h2 className="font-semibold">Threshold rules</h2>
               <p className="mt-1 text-xs text-muted-foreground">Rules compare enabled thresholds with the latest stored observations and forecast values.</p>
-              {hiddenTemporaryRules > 0 ? (
-                <p className="mt-1 text-xs text-muted-foreground">Temporary/sample rules are hidden from this list; they remain saved.</p>
-              ) : null}
             </div>
           </div>
           <div className="mt-3 divide-y divide-border">
@@ -541,7 +533,7 @@ export function WeatherIntelligencePage() {
             ))}
             {!rulesQuery.isLoading && !rulesQuery.isError && visibleRules.length === 0 ? (
               <p className="py-3 text-sm text-muted-foreground">
-                {hiddenTemporaryRules > 0 ? "No permanent threshold rules to show." : "No alert rules configured yet."}
+                No alert rules configured yet.
               </p>
             ) : null}
           </div>
