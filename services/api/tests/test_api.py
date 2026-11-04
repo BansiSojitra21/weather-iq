@@ -107,7 +107,7 @@ def test_alert_rule_accepts_requested_severity_levels(client):
     assert response.json()["severity"] == "critical"
 
 
-def test_creating_matching_enabled_rule_records_alert_immediately(client, database):
+def test_creating_matching_enabled_rule_schedules_immediate_evaluation(client, database):
     from datetime import datetime, timezone
 
     location = client.get("/api/v1/locations").json()["items"][0]
@@ -137,9 +137,32 @@ def test_creating_matching_enabled_rule_records_alert_immediately(client, databa
     )
 
     assert response.status_code == 200
-    assert response.json()["evaluation"]["created"] == 1
-    alerts = client.get("/api/v1/alerts", params={"location_id": location["id"]}).json()["items"]
-    assert any(alert["title"] == f"Warm today at {location['name']}" for alert in alerts)
+    assert response.json()["evaluation"] == {"status": "scheduled"}
+
+
+def test_enabling_rule_schedules_evaluation_and_disabling_does_not(client):
+    location = client.get("/api/v1/locations").json()["items"][0]
+    headers = {"X-API-Key": "test-key"}
+    created = client.post(
+        "/api/v1/alerts/rules",
+        headers=headers,
+        json={
+            "name": "Toggle wind",
+            "location_id": location["id"],
+            "variable": "wind_speed_kmh",
+            "operator": "gt",
+            "threshold": 60,
+            "severity": "high",
+            "enabled": False,
+        },
+    )
+    rule_id = created.json()["id"]
+
+    enabled = client.patch(f"/api/v1/alerts/rules/{rule_id}", headers=headers, json={"enabled": True})
+    disabled = client.patch(f"/api/v1/alerts/rules/{rule_id}", headers=headers, json={"enabled": False})
+
+    assert enabled.json()["evaluation"] == {"status": "scheduled"}
+    assert disabled.json()["evaluation"] is None
 
 
 def test_monitoring_and_correlation_handle_sqlite_timestamps(client, database):
