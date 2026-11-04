@@ -56,6 +56,11 @@ type AlertRule = {
 type AlertRuleInput = Omit<AlertRule, "id">;
 type AlertList = { items: AlertItem[]; total: number; page: number; page_size: number };
 type AlertRuleList = { items: AlertRule[] };
+type CreateRuleMutationInput = {
+  body: AlertRuleInput;
+  formValues: { name: string; threshold: string; variable: string; severity: string; allCities: boolean };
+  formRevision: number;
+};
 
 function isTemporaryRule(rule: AlertRule) {
   return /^(?:temp(?:orary)?|test|sample)(?:\s+(?:rule|data))?$/i.test(rule.name.trim());
@@ -152,6 +157,8 @@ export function WeatherIntelligencePage() {
   const [allCities, setAllCities] = useState(false);
   const ruleMutationVersions = useRef(new Map<number, number>());
   const ruleMutationQueue = useRef(new Map<number, Promise<void>>());
+  const createRuleId = useRef(0);
+  const createFormRevision = useRef(0);
   const [alertPageByLocation, setAlertPageByLocation] = useState<Record<number, number>>({});
   const alertPage = locationId == null ? 1 : alertPageByLocation[locationId] ?? 1;
   const [actionError, setActionError] = useState<string | null>(null);
@@ -242,19 +249,17 @@ export function WeatherIntelligencePage() {
   });
 
   const createRuleMutation = useMutation({
-    mutationFn: (body: AlertRuleInput) =>
+    mutationFn: ({ body }: CreateRuleMutationInput) =>
       api<AlertRule>("alerts/rules", { method: "POST", body: JSON.stringify(body) }),
-    onMutate: (body: AlertRuleInput) => {
+    onMutate: ({ body, formValues, formRevision }) => {
       void queryClient.cancelQueries({ queryKey: ["alert-rules"] });
-      const temporaryId = -Date.now();
+      const temporaryId = -(++createRuleId.current);
       queryClient.setQueryData<AlertRuleList>(["alert-rules"], (current) => ({
         items: [...(current?.items ?? []), { ...body, id: temporaryId }],
       }));
-      return { temporaryId };
+      return { temporaryId, formValues, formRevision };
     },
     onSuccess: (rule, _body, context) => {
-      setRuleName("");
-      setThreshold("");
       setActionError(null);
       setSavedRuleMessage(`Saved "${rule.name}". It will notify when the threshold is met.`);
       if (context) {
@@ -267,14 +272,22 @@ export function WeatherIntelligencePage() {
       }
       void queryClient.invalidateQueries({ queryKey: ["alerts"] });
     },
-    onError: (error, _body, context) => {
+    onError: (error, _variables, context) => {
       if (context) {
         queryClient.setQueryData<AlertRuleList>(["alert-rules"], (current) =>
           current
             ? { ...current, items: current.items.filter((item) => item.id !== context.temporaryId) }
             : current,
         );
+        if (createFormRevision.current === context.formRevision) {
+          setRuleName(context.formValues.name);
+          setThreshold(context.formValues.threshold);
+          setVariable(context.formValues.variable);
+          setSeverity(context.formValues.severity);
+          setAllCities(context.formValues.allCities);
+        }
       }
+      setSavedRuleMessage(null);
       setActionError(error instanceof Error ? error.message : "Rule could not be saved.");
     },
   });
@@ -320,7 +333,8 @@ export function WeatherIntelligencePage() {
           ? thresholdValue * 25.4
           : thresholdValue * 1.609344
       : thresholdValue;
-    createRuleMutation.mutate({
+    const formValues = { name: ruleName, threshold, variable, severity, allCities };
+    const body: AlertRuleInput = {
       name: ruleName.trim(),
       location_id: allCities ? null : locationId,
       variable,
@@ -330,7 +344,11 @@ export function WeatherIntelligencePage() {
       enabled: true,
       cooldown_minutes: 720,
       description: `Forecast or observed ${VARIABLE_LABELS[variable].toLowerCase()} exceeds ${thresholdValue}.`,
-    });
+    };
+    createRuleMutation.mutate({ body, formValues, formRevision: createFormRevision.current });
+    setRuleName("");
+    setThreshold("");
+    setSavedRuleMessage(`Saving "${body.name}"…`);
   }
 
   return (
@@ -465,7 +483,7 @@ export function WeatherIntelligencePage() {
                   disabled={rule.id < 0}
                   onClick={() => ruleMutation.mutate({ ruleId: rule.id, enabled: !rule.enabled })}
                 >
-                  {rule.enabled ? "Enabled" : "Disabled"}
+                  {rule.id < 0 ? "Saving…" : rule.enabled ? "Enabled" : "Disabled"}
                 </Button>
               </div>
             ))}
@@ -482,12 +500,12 @@ export function WeatherIntelligencePage() {
             </p>
             <label className="block text-xs text-muted-foreground">
               Rule name
-              <Input className="mt-1" value={ruleName} onChange={(event) => setRuleName(event.target.value)} required maxLength={160} placeholder="For example, Strong wind" />
+              <Input className="mt-1" value={ruleName} onChange={(event) => { createFormRevision.current += 1; setRuleName(event.target.value); }} required maxLength={160} placeholder="For example, Strong wind" />
             </label>
             <div className="grid gap-2 sm:grid-cols-3">
               <label className="block text-xs text-muted-foreground">
                 Weather variable
-                <Select className="mt-1 w-full" value={variable} onChange={(event) => setVariable(event.target.value)}>
+                <Select className="mt-1 w-full" value={variable} onChange={(event) => { createFormRevision.current += 1; setVariable(event.target.value); }}>
                   <option value="precipitation_mm">Rainfall</option>
                   <option value="wind_speed_kmh">Wind speed</option>
                   <option value="temperature_c">Temperature</option>
@@ -495,11 +513,11 @@ export function WeatherIntelligencePage() {
               </label>
               <label className="block text-xs text-muted-foreground">
                 Above ({variable === "temperature_c" ? units === "metric" ? "°C" : "°F" : variable === "precipitation_mm" ? units === "metric" ? "mm" : "in" : units === "metric" ? "km/h" : "mph"})
-                <Input className="mt-1" type="number" min={variable === "temperature_c" ? "-100" : "0"} step="any" value={threshold} onChange={(event) => setThreshold(event.target.value)} required />
+                <Input className="mt-1" type="number" min={variable === "temperature_c" ? "-100" : "0"} step="any" value={threshold} onChange={(event) => { createFormRevision.current += 1; setThreshold(event.target.value); }} required />
               </label>
               <label className="block text-xs text-muted-foreground">
                 Severity
-                <Select className="mt-1 w-full" value={severity} onChange={(event) => setSeverity(event.target.value)}>
+                <Select className="mt-1 w-full" value={severity} onChange={(event) => { createFormRevision.current += 1; setSeverity(event.target.value); }}>
                   <option value="low">Low</option>
                   <option value="moderate">Moderate</option>
                   <option value="high">High</option>
@@ -511,7 +529,7 @@ export function WeatherIntelligencePage() {
               <input
                 type="checkbox"
                 checked={allCities}
-                onChange={(event) => setAllCities(event.target.checked)}
+                onChange={(event) => { createFormRevision.current += 1; setAllCities(event.target.checked); }}
                 className="mt-0.5 h-4 w-4 rounded border-border accent-accent"
               />
               <span>
@@ -521,8 +539,8 @@ export function WeatherIntelligencePage() {
                 </span>
               </span>
             </label>
-            <Button type="submit" variant="secondary" disabled={createRuleMutation.isPending}>
-              {createRuleMutation.isPending ? "Saving…" : allCities ? "Save rule for all cities" : `Save rule for ${locations.find((item) => item.id === locationId)?.name ?? "selected city"}`}
+            <Button type="submit" variant="secondary">
+              {allCities ? "Save rule for all cities" : `Save rule for ${locations.find((item) => item.id === locationId)?.name ?? "selected city"}`}
             </Button>
             <AlertMessage message={actionError} />
             {savedRuleMessage ? <p role="status" className="text-sm text-ok">{savedRuleMessage}</p> : null}
