@@ -19,7 +19,7 @@ describe("interface states", () => {
     render(<WeatherLoader location="Mumbai" />);
     const loader = screen.getByRole("status", { name: "Loading weather for Mumbai" });
     expect(loader).toBeVisible();
-    expect(loader).toHaveClass("fixed", "inset-0", "z-[60]");
+    expect(loader).toHaveClass("fixed", "inset-0", "z-20");
     expect(screen.getByText("Loading Mumbai weather…")).toBeVisible();
   });
 

@@ -37,7 +37,7 @@ export function WeatherLoader({
       role="status"
       aria-live="polite"
       aria-label={message ?? `Loading weather for ${location}`}
-      className="fixed inset-0 z-[60] grid min-h-screen place-items-center bg-background px-4"
+      className="fixed inset-0 z-20 grid min-h-screen place-items-center bg-background px-4"
     >
       <div className="flex flex-col items-center text-center">
         <div className="weather-loader-mark relative grid h-16 w-16 place-items-center rounded-2xl bg-gradient-to-br from-blue-500 to-sky-400 text-white shadow-lg shadow-blue-500/25">

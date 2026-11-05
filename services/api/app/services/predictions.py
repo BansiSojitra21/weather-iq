@@ -20,19 +20,10 @@ from app.services.catalog import (
     convert_temperature,
     isoformat,
 )
-from app.services.ingestion import catch_up_daily_history, ensure_fresh_current
 
 logger = logging.getLogger(__name__)
 
 _CACHE: dict[str, tuple[float, dict]] = {}
-
-
-def _refresh_prediction_inputs(session: Session, location: Location) -> None:
-    try:
-        catch_up_daily_history(session, location)
-    except Exception:
-        logger.exception("daily_history_catch_up_failed location_id=%s", location.id)
-    ensure_fresh_current(session, location)
 
 
 def _load(name: str) -> tuple[dict, str]:
@@ -159,7 +150,6 @@ def _fourier_value(row: pd.Series, model: dict) -> float | None:
 
 
 def predict_temperature(session: Session, location: Location, horizons: list[int], units: str) -> dict:
-    _refresh_prediction_inputs(session, location)
     artifact, _path = _load("temperature")
     frame = _daily_frame(session, location)
     if frame.empty:
@@ -268,7 +258,6 @@ def predict_temperature(session: Session, location: Location, horizons: list[int
 
 
 def predict_precipitation(session: Session, location: Location, horizons: list[int], units: str) -> dict:
-    _refresh_prediction_inputs(session, location)
     artifact, _path = _load("precipitation")
     frame = _daily_frame(session, location)
     if frame.empty:
