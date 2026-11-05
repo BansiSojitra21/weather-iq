@@ -68,3 +68,52 @@ body {
   border-radius: 9999px;
   background: var(--accent);
 }
+
+@keyframes weather-loader-orbit {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes weather-loader-float {
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+@keyframes weather-loader-spark {
+  50% {
+    opacity: 0.45;
+    transform: scale(0.7);
+  }
+}
+
+.weather-loader-mark {
+  animation: weather-loader-float 2.4s ease-in-out infinite;
+}
+
+.weather-loader-orbit {
+  animation: weather-loader-orbit 8s linear infinite;
+}
+
+.weather-loader-orbit-delayed {
+  animation-duration: 12s;
+  animation-direction: reverse;
+}
+
+.weather-loader-icon {
+  animation: weather-loader-float 2.4s ease-in-out infinite;
+}
+
+.weather-loader-spark {
+  animation: weather-loader-spark 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .weather-loader-mark,
+  .weather-loader-orbit,
+  .weather-loader-icon,
+  .weather-loader-spark {
+    animation: none;
+  }
+}

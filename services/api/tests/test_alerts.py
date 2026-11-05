@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import sessionmaker
 
@@ -73,8 +73,33 @@ def test_scheduled_alert_check_evaluates_enabled_rules(database, monkeypatch):
     database.commit()
     factory = sessionmaker(bind=database.get_bind(), expire_on_commit=False)
     monkeypatch.setattr(alert_schedule.db_session, "SessionLocal", factory)
-    monkeypatch.setattr(alert_schedule, "ensure_fresh_current", lambda _session, _location: None)
 
     result = alert_schedule.run_alert_check()
 
     assert result["created"] == 1
+
+
+def test_scheduled_alert_loop_waits_before_its_first_check(monkeypatch):
+    import asyncio
+
+    from app.services import alert_schedule
+
+    calls = []
+
+    def record_check():
+        calls.append(True)
+        return {"created": 0, "skipped_duplicates": 0}
+
+    monkeypatch.setattr(alert_schedule, "run_alert_check", record_check)
+    monkeypatch.setattr(alert_schedule, "INTERVAL", timedelta(seconds=5))
+
+    async def stop_before_first_check():
+        stop = asyncio.Event()
+        task = asyncio.create_task(alert_schedule.alert_evaluation_loop(stop))
+        await asyncio.sleep(0)
+        stop.set()
+        await task
+
+    asyncio.run(stop_before_first_check())
+
+    assert calls == []

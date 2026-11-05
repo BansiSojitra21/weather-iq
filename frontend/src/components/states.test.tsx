@@ -3,12 +3,18 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { chartColors, LineSeriesChart } from "@/components/charts";
-import { StatePanel } from "@/components/states";
+import { StatePanel, WeatherLoader } from "@/components/states";
 
 describe("interface states", () => {
   it("shows a loading status", () => {
     render(<StatePanel status="loading" />);
     expect(screen.getByRole("status")).toHaveTextContent("Loading");
+  });
+
+  it("shows the animated weather loader for the selected city", () => {
+    render(<WeatherLoader location="Mumbai" />);
+    expect(screen.getByRole("status", { name: "Loading weather for Mumbai" })).toBeVisible();
+    expect(screen.getByText("Loading Mumbai weather…")).toBeVisible();
   });
 
   it("shows an error and retries", async () => {

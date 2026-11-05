@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { chartColors, LineSeriesChart } from "@/components/charts";
 import { useDashboard } from "@/components/dashboard-context";
-import { StatePanel } from "@/components/states";
+import { StatePanel, WeatherLoader } from "@/components/states";
 import { Badge, Card } from "@/components/ui";
 import { api, ApiError } from "@/lib/api";
 import { dateKeyInTimeZone, daylightDetails, formatNumber, formatWhen } from "@/lib/format";
@@ -96,8 +96,8 @@ export function OverviewPage() {
     },
     refetchIntervalInBackground: false,
   });
-  if (locationId == null) return <StatePanel status="loading" />;
-  if (query.isLoading) return <StatePanel status="loading" />;
+  if (locationId == null) return <WeatherLoader />;
+  if (query.isLoading) return <WeatherLoader location={location?.name ?? "Mumbai"} />;
   if (query.isError) {
     return (
       <StatePanel
