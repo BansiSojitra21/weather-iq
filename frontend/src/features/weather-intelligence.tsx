@@ -163,6 +163,7 @@ export function WeatherIntelligencePage() {
   const [threshold, setThreshold] = useState("");
   const [severity, setSeverity] = useState("high");
   const [allCities, setAllCities] = useState(false);
+  const [ruleFormOpen, setRuleFormOpen] = useState(false);
   const ruleMutationVersions = useRef(new Map<number, number>());
   const ruleMutationQueue = useRef(new Map<number, Promise<void>>());
   const createRuleId = useRef(0);
@@ -398,6 +399,18 @@ export function WeatherIntelligencePage() {
     setSavedRuleMessage(`Saving "${body.name}"…`);
   }
 
+  function cancelRuleForm() {
+    createFormRevision.current += 1;
+    setRuleName("");
+    setVariable("precipitation_mm");
+    setThreshold("");
+    setSeverity("high");
+    setAllCities(false);
+    setActionError(null);
+    setSavedRuleMessage(null);
+    setRuleFormOpen(false);
+  }
+
   return (
     <div className="space-y-5">
       <header>
@@ -507,8 +520,23 @@ export function WeatherIntelligencePage() {
               <h2 className="font-semibold">Threshold rules</h2>
               <p className="mt-1 text-xs text-muted-foreground">Rules compare enabled thresholds with the latest stored observations and forecast values.</p>
             </div>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              aria-expanded={ruleFormOpen}
+              aria-controls="add-threshold-rule-form"
+              onClick={() => (ruleFormOpen ? cancelRuleForm() : setRuleFormOpen(true))}
+            >
+              {ruleFormOpen ? "Cancel" : "Add rule"}
+            </Button>
           </div>
-          <div className="mt-3 divide-y divide-border">
+          <div
+            className="alert-history-scroll mt-3 max-h-[210px] shrink-0 divide-y divide-border overflow-y-auto overscroll-contain"
+            role="region"
+            aria-label="Threshold rules list"
+            tabIndex={0}
+          >
             {rulesQuery.isLoading ? <p className="py-3 text-sm text-muted-foreground">Loading rules…</p> : null}
             {rulesQuery.isError ? <p role="alert" className="py-3 text-sm text-danger">Alert rules could not be loaded.</p> : null}
             {visibleRules.map((rule) => (
@@ -537,7 +565,12 @@ export function WeatherIntelligencePage() {
               </p>
             ) : null}
           </div>
-          <form onSubmit={submitRule} className="mt-4 space-y-3 border-t border-border pt-4">
+          <form
+            id="add-threshold-rule-form"
+            hidden={!ruleFormOpen}
+            onSubmit={submitRule}
+            className="mt-4 space-y-3 border-t border-border pt-4"
+          >
             <h3 className="text-sm font-semibold">Add a location threshold</h3>
             <p className="text-xs text-muted-foreground">
               Rules are evaluated against stored weather. Turn on browser notifications from the bell menu; the app must remain open to receive them.
