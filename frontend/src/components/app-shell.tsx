@@ -7,6 +7,7 @@ import { useState, type ReactNode } from "react";
 import { DashboardProvider, useDashboard } from "@/components/dashboard-context";
 import { AlertNotificationWatcher, NotificationCenter } from "@/components/notification-center";
 import { SelectionDropdown } from "@/components/selection-dropdown";
+import { WeatherLogo } from "@/components/weather-logo";
 import { Button } from "@/components/ui";
 import { cn } from "@/lib/utils";
 
@@ -52,9 +53,7 @@ function Shell({ children }: { children: ReactNode }) {
       <header className="sticky top-0 z-30 border-b border-border bg-white">
         <div className="mx-auto grid w-full max-w-7xl grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-3 px-4 py-3 md:grid-cols-[minmax(0,1fr)_auto_auto] lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
           <Link href="/" className="col-start-1 row-start-1 flex min-w-0 items-center gap-3">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-accent text-white">
-              <CloudSun className="h-5 w-5" aria-hidden />
-            </span>
+            <WeatherLogo className="h-10 w-10" />
             <span className="min-w-0">
               <span className="block text-sm font-semibold tracking-tight text-foreground sm:text-base">WeatherIQ</span>
               <span className="block truncate text-[0.7rem] text-muted-foreground sm:text-xs">

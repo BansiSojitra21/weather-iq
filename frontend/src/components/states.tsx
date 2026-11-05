@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui";
-import { CloudSun } from "lucide-react";
+import { WeatherLogo } from "@/components/weather-logo";
 
 export function StatePanel({
   status,
@@ -40,10 +40,10 @@ export function WeatherLoader({
       className="fixed inset-0 z-20 grid min-h-screen place-items-center bg-background px-4"
     >
       <div className="flex flex-col items-center text-center">
-        <div className="weather-loader-mark relative grid h-16 w-16 place-items-center rounded-2xl bg-gradient-to-br from-blue-500 to-sky-400 text-white shadow-lg shadow-blue-500/25">
+        <div className="weather-loader-mark relative">
           <span className="weather-loader-orbit absolute inset-[-6px] rounded-[1.35rem] border border-blue-400/40" aria-hidden />
           <span className="weather-loader-orbit weather-loader-orbit-delayed absolute inset-[-11px] rounded-[1.6rem] border border-sky-300/30" aria-hidden />
-          <CloudSun className="weather-loader-icon h-8 w-8" strokeWidth={1.6} aria-hidden />
+          <WeatherLogo className="relative h-16 w-16 shadow-lg shadow-blue-500/25" />
           <span className="weather-loader-spark absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-amber-200" aria-hidden />
         </div>
         <p className="mt-6 text-base font-semibold tracking-tight text-foreground">WeatherIQ</p>

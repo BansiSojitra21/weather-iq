@@ -122,10 +122,6 @@ body {
   animation-direction: reverse;
 }
 
-.weather-loader-icon {
-  animation: weather-loader-float 2.4s ease-in-out infinite;
-}
-
 .weather-loader-spark {
   animation: weather-loader-spark 1.4s ease-in-out infinite;
 }
@@ -133,7 +129,6 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .weather-loader-mark,
   .weather-loader-orbit,
-  .weather-loader-icon,
   .weather-loader-spark {
     animation: none;
   }

@@ -20,6 +20,7 @@ describe("interface states", () => {
     const loader = screen.getByRole("status", { name: "Loading weather for Mumbai" });
     expect(loader).toBeVisible();
     expect(loader).toHaveClass("fixed", "inset-0", "z-20");
+    expect(loader.querySelector("svg.lucide-cloud-sun")).toBeInTheDocument();
     expect(screen.getByText("Loading Mumbai weather…")).toBeVisible();
   });
 
