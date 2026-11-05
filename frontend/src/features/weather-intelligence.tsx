@@ -589,7 +589,7 @@ export function WeatherIntelligencePage() {
             {visibleSavedRuleMessage ? <p role="status" className="text-sm text-ok">{visibleSavedRuleMessage}</p> : null}
           </form>
           <div
-            className="threshold-rules-scroll mt-3 min-h-0 flex-1 divide-y divide-border overflow-y-auto overscroll-contain"
+            className="threshold-rules-scroll mt-3 max-h-[210px] shrink-0 divide-y divide-border overflow-y-auto overscroll-contain"
             role="region"
             aria-label="Threshold rules list"
             tabIndex={0}
