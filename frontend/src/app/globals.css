@@ -69,6 +69,27 @@ body {
   background: var(--accent);
 }
 
+.threshold-rules-scroll {
+  scrollbar-gutter: stable;
+  scrollbar-color: #cbd5e1 #f1f5f9;
+  scrollbar-width: thin;
+}
+
+.threshold-rules-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+
+.threshold-rules-scroll::-webkit-scrollbar-track {
+  border-radius: 9999px;
+  background: #f1f5f9;
+}
+
+.threshold-rules-scroll::-webkit-scrollbar-thumb {
+  border: 2px solid #f1f5f9;
+  border-radius: 9999px;
+  background: #cbd5e1;
+}
+
 @keyframes weather-loader-orbit {
   to {
     transform: rotate(360deg);

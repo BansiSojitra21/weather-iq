@@ -531,45 +531,11 @@ export function WeatherIntelligencePage() {
               {ruleFormOpen ? "Cancel" : "Add rule"}
             </Button>
           </div>
-          <div
-            className="alert-history-scroll mt-3 max-h-[210px] shrink-0 divide-y divide-border overflow-y-auto overscroll-contain"
-            role="region"
-            aria-label="Threshold rules list"
-            tabIndex={0}
-          >
-            {rulesQuery.isLoading ? <p className="py-3 text-sm text-muted-foreground">Loading rules…</p> : null}
-            {rulesQuery.isError ? <p role="alert" className="py-3 text-sm text-danger">Alert rules could not be loaded.</p> : null}
-            {visibleRules.map((rule) => (
-              <div key={rule.id} className="flex items-center justify-between gap-3 py-3">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">{rule.name}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {VARIABLE_LABELS[rule.variable] ?? rule.variable} {operatorLabel(rule.operator)} {formatThreshold(rule, units)} · {severityLabel(rule.severity)}
-                    {rule.location_id == null ? " · all cities" : ` · ${locations.find((item) => item.id === rule.location_id)?.name ?? "selected city"}`}
-                  </p>
-                </div>
-                <Button
-                  type="button"
-                  variant={rule.enabled ? "secondary" : "ghost"}
-                  size="sm"
-                  disabled={rule.id < 0}
-                  onClick={() => ruleMutation.mutate({ ruleId: rule.id, enabled: !rule.enabled })}
-                >
-                  {rule.enabled ? "Enabled" : "Disabled"}
-                </Button>
-              </div>
-            ))}
-            {!rulesQuery.isLoading && !rulesQuery.isError && visibleRules.length === 0 ? (
-              <p className="py-3 text-sm text-muted-foreground">
-                No alert rules configured yet.
-              </p>
-            ) : null}
-          </div>
           <form
             id="add-threshold-rule-form"
             hidden={!ruleFormOpen}
             onSubmit={submitRule}
-            className="mt-4 space-y-3 border-t border-border pt-4"
+            className="mt-3 space-y-3 border-t border-border pt-4"
           >
             <h3 className="text-sm font-semibold">Add a location threshold</h3>
             <p className="text-xs text-muted-foreground">
@@ -622,6 +588,40 @@ export function WeatherIntelligencePage() {
             <AlertMessage message={actionError} />
             {visibleSavedRuleMessage ? <p role="status" className="text-sm text-ok">{visibleSavedRuleMessage}</p> : null}
           </form>
+          <div
+            className="threshold-rules-scroll mt-3 max-h-[210px] shrink-0 divide-y divide-border overflow-y-auto overscroll-contain"
+            role="region"
+            aria-label="Threshold rules list"
+            tabIndex={0}
+          >
+            {rulesQuery.isLoading ? <p className="py-3 text-sm text-muted-foreground">Loading rules…</p> : null}
+            {rulesQuery.isError ? <p role="alert" className="py-3 text-sm text-danger">Alert rules could not be loaded.</p> : null}
+            {visibleRules.map((rule) => (
+              <div key={rule.id} className="flex items-center justify-between gap-3 py-3">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium">{rule.name}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {VARIABLE_LABELS[rule.variable] ?? rule.variable} {operatorLabel(rule.operator)} {formatThreshold(rule, units)} · {severityLabel(rule.severity)}
+                    {rule.location_id == null ? " · all cities" : ` · ${locations.find((item) => item.id === rule.location_id)?.name ?? "selected city"}`}
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant={rule.enabled ? "secondary" : "ghost"}
+                  size="sm"
+                  disabled={rule.id < 0}
+                  onClick={() => ruleMutation.mutate({ ruleId: rule.id, enabled: !rule.enabled })}
+                >
+                  {rule.enabled ? "Enabled" : "Disabled"}
+                </Button>
+              </div>
+            ))}
+            {!rulesQuery.isLoading && !rulesQuery.isError && visibleRules.length === 0 ? (
+              <p className="py-3 text-sm text-muted-foreground">
+                No alert rules configured yet.
+              </p>
+            ) : null}
+          </div>
         </Card>
 
         <Card id="alert-history" className="flex h-full min-h-[520px] flex-col p-4 sm:p-5">
