@@ -9,7 +9,10 @@ import { StatePanel, WeatherLoader } from "@/components/states";
 describe("interface states", () => {
   it("shows a loading status", () => {
     render(<StatePanel status="loading" />);
-    expect(screen.getByRole("status")).toHaveTextContent("Loading");
+    const loader = screen.getByRole("status", { name: "Loading your page…" });
+    expect(loader).toBeVisible();
+    expect(loader).toHaveClass("fixed", "inset-0");
+    expect(loader).toHaveTextContent("Loading your page…");
   });
 
   it("shows the animated weather loader for the selected city", () => {

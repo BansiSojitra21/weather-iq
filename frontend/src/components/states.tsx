@@ -1,5 +1,4 @@
 import { Button } from "@/components/ui";
-import { Skeleton } from "@/components/ui";
 import { CloudSun } from "lucide-react";
 
 export function StatePanel({
@@ -12,13 +11,7 @@ export function StatePanel({
   onRetry?: () => void;
 }) {
   if (status === "loading") {
-    return (
-      <div role="status" aria-live="polite" className="grid gap-3">
-        <span className="sr-only">Loading</span>
-        <Skeleton className="h-28" />
-        <Skeleton className="h-64" />
-      </div>
-    );
+    return <WeatherLoader message="Loading your page…" />;
   }
   return (
     <div role="status" className="rounded-xl border border-border bg-card p-6">
@@ -32,12 +25,18 @@ export function StatePanel({
   );
 }
 
-export function WeatherLoader({ location = "Mumbai" }: { location?: string }) {
+export function WeatherLoader({
+  location = "Mumbai",
+  message,
+}: {
+  location?: string;
+  message?: string;
+}) {
   return (
     <div
       role="status"
       aria-live="polite"
-      aria-label={`Loading weather for ${location}`}
+      aria-label={message ?? `Loading weather for ${location}`}
       className="fixed inset-0 z-[60] grid min-h-screen place-items-center bg-background px-4"
     >
       <div className="flex flex-col items-center text-center">
@@ -48,7 +47,7 @@ export function WeatherLoader({ location = "Mumbai" }: { location?: string }) {
           <span className="weather-loader-spark absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-amber-200" aria-hidden />
         </div>
         <p className="mt-6 text-base font-semibold tracking-tight text-foreground">WeatherIQ</p>
-        <p className="mt-1 text-sm text-muted-foreground">Loading {location} weather…</p>
+        <p className="mt-1 text-sm text-muted-foreground">{message ?? `Loading ${location} weather…`}</p>
         <span className="sr-only">Please wait while current conditions and the forecast load.</span>
       </div>
     </div>
