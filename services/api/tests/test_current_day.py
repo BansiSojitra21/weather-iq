@@ -23,24 +23,56 @@ def test_stale_snapshot_is_returned_while_refresh_runs_in_background(client, dat
 
     refreshes = []
 
-    def fake_ingest(session, loc, **kwargs):
-        assert loc.id == location.id
-        assert kwargs["kinds"] == {"current", "forecast"}
-        refreshes.append(loc.id)
-        row = session.query(CurrentCondition).filter_by(location_id=loc.id).one()
-        row.temperature_c = 33.4
-        row.observed_at = datetime.now(timezone.utc).replace(microsecond=0)
-        row.retrieved_at = datetime.now(timezone.utc)
-        session.flush()
-        return {"records": 1}
-
-    monkeypatch.setattr("app.services.ingestion.ingest_location", fake_ingest)
+    monkeypatch.setattr("app.api.routes._schedule_current_refresh", refreshes.append)
     response = client.get("/api/v1/weather/current", params={"location_id": location.id})
     assert response.status_code == 200
     assert response.json()["observation"]["temperature"] == 31.8
     assert refreshes == [location.id]
     updated = database.query(CurrentCondition).filter_by(location_id=location.id).one()
-    assert updated.temperature_c == 33.4
+    assert updated.temperature_c == 31.8
+
+
+def test_missing_snapshot_is_returned_without_waiting_for_weather_provider(client, database, monkeypatch):
+    location = database.query(Location).filter_by(name="Mumbai").one()
+    refreshes = []
+
+    monkeypatch.setattr("app.api.routes._schedule_current_refresh", refreshes.append)
+
+    response = client.get("/api/v1/weather/current", params={"location_id": location.id})
+
+    assert response.status_code == 200
+    assert response.json()["observation"] is None
+    assert refreshes == [location.id]
+
+
+def test_weather_refresh_scheduler_does_not_wait_for_provider(monkeypatch):
+    import asyncio
+
+    from app.api import routes
+
+    started = asyncio.Event()
+    release = asyncio.Event()
+    location_id = 99999
+
+    async def hold_refresh(_function, _location_id):
+        started.set()
+        await release.wait()
+
+    monkeypatch.setattr(routes.asyncio, "to_thread", hold_refresh)
+    routes._REFRESH_TASKS.pop(location_id, None)
+    routes._REFRESH_LAST_STARTED.pop(location_id, None)
+
+    async def verify_refresh_is_detached():
+        await routes._schedule_current_refresh(location_id)
+        task = routes._REFRESH_TASKS[location_id]
+        await started.wait()
+        assert not task.done()
+        release.set()
+        await task
+
+    asyncio.run(verify_refresh_is_detached())
+
+    assert location_id not in routes._REFRESH_TASKS
 
 
 def test_missing_forecast_is_refreshed_when_current_snapshot_is_fresh(client, database, monkeypatch):
@@ -59,22 +91,13 @@ def test_missing_forecast_is_refreshed_when_current_snapshot_is_fresh(client, da
     database.commit()
     refreshes = []
 
-    def fake_ingest(session, loc, **kwargs):
-        assert loc.id == location.id
-        assert kwargs["kinds"] == {"current", "forecast"}
-        refreshes.append(loc.id)
-        row = session.query(CurrentCondition).filter_by(location_id=loc.id).one()
-        row.temperature_c = 33.4
-        session.flush()
-        return {"records": 1}
-
-    monkeypatch.setattr("app.services.ingestion.ingest_location", fake_ingest)
+    monkeypatch.setattr("app.api.routes._schedule_current_refresh", refreshes.append)
     response = client.get("/api/v1/weather/current", params={"location_id": location.id})
 
     assert response.status_code == 200
     assert response.json()["observation"]["temperature"] == 31.8
     assert refreshes == [location.id]
-    assert database.query(CurrentCondition).filter_by(location_id=location.id).one().temperature_c == 33.4
+    assert database.query(CurrentCondition).filter_by(location_id=location.id).one().temperature_c == 31.8
 
 
 def test_current_weather_uses_the_local_day_instead_of_the_previous_forecast_day(client, database, monkeypatch):

@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Bell, BellOff, ChevronDown } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Badge, Button } from "@/components/ui";
+import { useDashboard } from "@/components/dashboard-context";
 import { api } from "@/lib/api";
 import {
   getNotificationPermission,
@@ -46,6 +47,7 @@ function useAlertSeverities(storedSeverities: string) {
 }
 
 export function AlertNotificationWatcher() {
+  const { locationId } = useDashboard();
   const enabled = useSyncExternalStore(
     subscribeNotificationPreferences,
     () => window.localStorage.getItem(NOTIFICATIONS_KEY) === "true",
@@ -63,20 +65,23 @@ export function AlertNotificationWatcher() {
     () => "default",
   );
   const notificationsActive = enabled && permission === "granted";
-  const seenAlertIds = useRef<Set<number> | null>(null);
+  const seenAlertIds = useRef(new Map<number, Set<number>>());
   const notificationQuery = useQuery({
-    queryKey: ["alerts", "browser-notifications"],
-    queryFn: () => api<AlertList>("alerts?page=1&page_size=20"),
-    enabled: notificationsActive,
-    refetchInterval: notificationsActive ? 30_000 : false,
+    queryKey: ["alerts", "browser-notifications", locationId],
+    queryFn: () => api<AlertList>(`alerts?page=1&page_size=20&location_id=${locationId}`),
+    enabled: notificationsActive && locationId != null,
+    refetchInterval: notificationsActive && locationId != null ? 30_000 : false,
     refetchIntervalInBackground: false,
   });
 
   useEffect(() => {
     const items = notificationQuery.data?.items;
-    if (!items) return;
-    const knownIds = seenAlertIds.current;
-    seenAlertIds.current = new Set([...(knownIds ?? []), ...items.map((alert) => alert.id)]);
+    if (!items || locationId == null) return;
+    const knownIds = seenAlertIds.current.get(locationId);
+    seenAlertIds.current.set(
+      locationId,
+      new Set([...(knownIds ?? []), ...items.map((alert) => alert.id)]),
+    );
     if (!knownIds || !notificationsActive || typeof Notification === "undefined" || Notification.permission !== "granted") return;
     const newAlerts = items.filter(
       (alert) =>
@@ -98,7 +103,7 @@ export function AlertNotificationWatcher() {
     } catch (error) {
       console.error("New weather alerts were recorded, but browser notification could not be shown.", error);
     }
-  }, [notificationQuery.data, notificationsActive, severities]);
+  }, [locationId, notificationQuery.data, notificationsActive, severities]);
 
   return null;
 }

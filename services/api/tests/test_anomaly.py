@@ -1,10 +1,11 @@
+import asyncio
 import math
 from datetime import datetime, timedelta, timezone
 
 from ml.anomaly import explain, is_flagged, modified_z, reference_bounds
 
 from app.db.models import AppSetting
-from app.services.anomaly_schedule import SCHEDULE_KEY, run_if_due, seconds_until_due
+from app.services.anomaly_schedule import SCHEDULE_KEY, anomaly_detection_loop, run_if_due, seconds_until_due
 
 
 def test_robust_threshold_flags_only_the_unusual_point():
@@ -43,3 +44,25 @@ def test_scheduled_detection_skips_a_second_run_the_same_day(database):
     row = database.get(AppSetting, SCHEDULE_KEY)
     assert row is not None
     assert row.value["ran_at"] == (moment + timedelta(days=1)).isoformat()
+
+
+def test_anomaly_detection_waits_until_after_startup(monkeypatch):
+    calls = []
+
+    def record_run():
+        calls.append(True)
+        return None
+
+    monkeypatch.setattr("app.services.anomaly_schedule.run_if_due", record_run)
+    monkeypatch.setattr("app.services.anomaly_schedule.STARTUP_DELAY", timedelta(seconds=5))
+
+    async def stop_before_startup_delay():
+        stop = asyncio.Event()
+        task = asyncio.create_task(anomaly_detection_loop(stop))
+        await asyncio.sleep(0)
+        stop.set()
+        await task
+
+    asyncio.run(stop_before_startup_delay())
+
+    assert calls == []

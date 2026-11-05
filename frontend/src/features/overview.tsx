@@ -92,6 +92,7 @@ export function OverviewPage() {
     staleTime: 0,
     refetchInterval: (query) => {
       const current = query.state.data;
+      if (!current?.freshness.retrieved_at && !current?.observation) return 5_000;
       return current?.hourly.length && current.daily.length && !needsRefresh(current) ? false : 15_000;
     },
     refetchIntervalInBackground: false,
@@ -109,7 +110,12 @@ export function OverviewPage() {
   }
   const data = query.data;
   if (!data?.observation && data?.daily.length === 0) {
-    return <StatePanel status="empty" message="No weather has been ingested for this location yet. Run scripts/bootstrap.py." />;
+    return (
+      <StatePanel
+        status="empty"
+        message={`Weather data for ${location?.name ?? "this location"} is being fetched. It will appear here automatically.`}
+      />
+    );
   }
   const labels = data?.unit_labels;
   const daylight = daylightDetails(

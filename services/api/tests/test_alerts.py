@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import sessionmaker
 
-from app.db.models import AlertRule, Location, WeatherObservation
+from app.db.models import Alert, AlertRule, Location, WeatherObservation
 from app.services.alerts import evaluate_rules
 
 
@@ -40,6 +40,50 @@ def test_alert_evaluation_suppresses_duplicates(database):
     assert first["created"] == 1
     assert second["created"] == 0
     assert second["skipped_duplicates"] >= 1
+
+
+def test_all_city_rule_creates_alert_only_for_cities_that_match(database):
+    now = datetime.now(timezone.utc)
+    mumbai = Location(name="Mumbai", country="India", latitude=19, longitude=72, timezone="Asia/Kolkata")
+    delhi = Location(name="Delhi", country="India", latitude=28, longitude=77, timezone="Asia/Kolkata")
+    database.add_all([mumbai, delhi])
+    database.flush()
+    database.add_all(
+        [
+            WeatherObservation(
+                location_id=mumbai.id,
+                observed_at=now,
+                granularity="daily",
+                temperature_max_c=42,
+                provider="test",
+                retrieved_at=now,
+            ),
+            WeatherObservation(
+                location_id=delhi.id,
+                observed_at=now,
+                granularity="daily",
+                temperature_max_c=32,
+                provider="test",
+                retrieved_at=now,
+            ),
+            AlertRule(
+                name="All-city heat",
+                location_id=None,
+                variable="temperature_c",
+                operator="gt",
+                threshold=40,
+                severity="high",
+                enabled=True,
+            ),
+        ]
+    )
+    database.commit()
+
+    result = evaluate_rules(database)
+
+    assert result["created"] == 1
+    alerts = database.query(Alert).filter_by(alert_type="All-city heat").all()
+    assert [alert.location_id for alert in alerts] == [mumbai.id]
 
 
 def test_scheduled_alert_check_evaluates_enabled_rules(database, monkeypatch):

@@ -81,6 +81,7 @@ function Shell({ children }: { children: ReactNode }) {
             <SelectionDropdown
               label="Units"
               value={units}
+              align="end"
               onChange={(value) => {
                 if (value === "metric" || value === "imperial") setUnits(value);
               }}
@@ -117,6 +118,7 @@ function Shell({ children }: { children: ReactNode }) {
             <SelectionDropdown
               label="Units"
               value={units}
+              align="end"
               onChange={(value) => {
                 if (value === "metric" || value === "imperial") setUnits(value);
               }}
@@ -145,6 +147,7 @@ function Shell({ children }: { children: ReactNode }) {
                 <SelectionDropdown
                   label="Units"
                   value={units}
+                  align="end"
                   onChange={(value) => {
                     if (value === "metric" || value === "imperial") setUnits(value);
                   }}

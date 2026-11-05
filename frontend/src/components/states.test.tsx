@@ -3,6 +3,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { chartColors, LineSeriesChart } from "@/components/charts";
+import { SelectionDropdown } from "@/components/selection-dropdown";
 import { StatePanel, WeatherLoader } from "@/components/states";
 
 describe("interface states", () => {
@@ -13,7 +14,9 @@ describe("interface states", () => {
 
   it("shows the animated weather loader for the selected city", () => {
     render(<WeatherLoader location="Mumbai" />);
-    expect(screen.getByRole("status", { name: "Loading weather for Mumbai" })).toBeVisible();
+    const loader = screen.getByRole("status", { name: "Loading weather for Mumbai" });
+    expect(loader).toBeVisible();
+    expect(loader).toHaveClass("fixed", "inset-0", "z-[60]");
     expect(screen.getByText("Loading Mumbai weather…")).toBeVisible();
   });
 
@@ -41,6 +44,27 @@ describe("charts", () => {
       />,
     );
     expect(screen.getByRole("img", { name: "Hourly forecast temperature" })).toBeVisible();
+  });
+
+  describe("selection dropdown", () => {
+    it("aligns right-edge menus to the trigger", async () => {
+      render(
+        <SelectionDropdown
+          label="Units"
+          value="metric"
+          options={[
+            { value: "metric", label: "Metric" },
+            { value: "imperial", label: "Imperial" },
+          ]}
+          onChange={vi.fn()}
+          align="end"
+        />,
+      );
+
+      await userEvent.click(screen.getByRole("button", { name: "Units" }));
+
+      expect(screen.getByRole("listbox", { name: "Units" })).toHaveClass("right-0", "left-auto");
+    });
   });
 
 });

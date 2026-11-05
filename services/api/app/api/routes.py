@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import asyncio
+import logging
 from datetime import date, datetime, time, timedelta, timezone
+from time import monotonic
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Query, Response
 from fastapi.responses import PlainTextResponse
@@ -24,7 +27,7 @@ from app.services.analytics import (
 )
 from app.services.anomaly_service import anomaly_out, detect_anomalies, review_anomaly
 from app.services.catalog import ATTRIBUTION, DISCLAIMER, isoformat
-from app.services.ingestion import current_snapshot_state, ensure_fresh_current, ingest_many, refresh_current_snapshot
+from app.services.ingestion import current_snapshot_state, ingest_many, refresh_current_snapshot
 from app.services.monitoring import monitoring_payload
 from app.services.open_meteo import fetch_json, geocode_url
 from app.services.predictions import external_benchmark, predict_precipitation, predict_temperature
@@ -34,6 +37,10 @@ from app.services.workflows import accept_weather_event, pending_alerts, record_
 
 router = APIRouter(prefix="/api/v1")
 ALERT_SEVERITIES = {"info", "watch", "warning", "low", "moderate", "high", "critical"}
+logger = logging.getLogger(__name__)
+_REFRESH_TASKS: dict[int, asyncio.Task[None]] = {}
+_REFRESH_LAST_STARTED: dict[int, float] = {}
+_REFRESH_COOLDOWN_SECONDS = 300
 
 
 class LocationIn(BaseModel):
@@ -155,6 +162,26 @@ def _location(session: Session, location_id: int) -> Location:
     return location
 
 
+async def _schedule_current_refresh(location_id: int) -> None:
+    task = _REFRESH_TASKS.get(location_id)
+    if task is not None and not task.done():
+        return
+    now = monotonic()
+    if now - _REFRESH_LAST_STARTED.get(location_id, 0) < _REFRESH_COOLDOWN_SECONDS:
+        return
+    _REFRESH_LAST_STARTED[location_id] = now
+
+    async def refresh() -> None:
+        try:
+            await asyncio.to_thread(refresh_current_snapshot, location_id)
+        except Exception:
+            logger.exception("Background weather refresh failed for location_id=%s", location_id)
+        finally:
+            _REFRESH_TASKS.pop(location_id, None)
+
+    _REFRESH_TASKS[location_id] = asyncio.create_task(refresh())
+
+
 @router.get("/health")
 def health(session: Session = Depends(get_db)) -> dict:
     database = "ok"
@@ -223,11 +250,9 @@ def weather_current(
     session: Session = Depends(get_db),
 ) -> dict:
     location = _location(session, location_id)
-    has_snapshot, needs_refresh = current_snapshot_state(session, location)
-    if not has_snapshot:
-        ensure_fresh_current(session, location)
-    elif needs_refresh:
-        background_tasks.add_task(refresh_current_snapshot, location.id)
+    _, needs_refresh = current_snapshot_state(session, location)
+    if needs_refresh:
+        background_tasks.add_task(_schedule_current_refresh, location.id)
     return current_payload(session, location, units)
 
 
@@ -258,11 +283,9 @@ def weather_forecast(
     session: Session = Depends(get_db),
 ) -> dict:
     location = _location(session, location_id)
-    has_snapshot, needs_refresh = current_snapshot_state(session, location)
-    if not has_snapshot:
-        ensure_fresh_current(session, location)
-    elif needs_refresh:
-        background_tasks.add_task(refresh_current_snapshot, location.id)
+    _, needs_refresh = current_snapshot_state(session, location)
+    if needs_refresh:
+        background_tasks.add_task(_schedule_current_refresh, location.id)
     payload = current_payload(session, location, units)
     return {
         "location": payload["location"],

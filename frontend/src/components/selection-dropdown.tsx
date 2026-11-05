@@ -16,9 +16,18 @@ type SelectionDropdownProps = {
   onChange: (value: string) => void;
   className?: string;
   menuClassName?: string;
+  align?: "start" | "end";
 };
 
-export function SelectionDropdown({ label, value, options, onChange, className, menuClassName }: SelectionDropdownProps) {
+export function SelectionDropdown({
+  label,
+  value,
+  options,
+  onChange,
+  className,
+  menuClassName,
+  align = "start",
+}: SelectionDropdownProps) {
   const [open, setOpen] = useState(false);
   const [focusedIndex, setFocusedIndex] = useState(0);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -97,7 +106,8 @@ export function SelectionDropdown({ label, value, options, onChange, className, 
           role="listbox"
           aria-label={label}
           className={cn(
-            "absolute left-0 top-full z-50 mt-2 max-h-64 w-full min-w-32 overflow-x-hidden overflow-y-auto overscroll-contain rounded-xl border border-border bg-white p-1 shadow-xl",
+            "absolute top-full z-50 mt-2 max-h-64 w-full min-w-32 overflow-x-hidden overflow-y-auto overscroll-contain rounded-xl border border-border bg-white p-1 shadow-xl",
+            align === "end" ? "right-0 left-auto" : "left-0 right-auto",
             menuClassName,
           )}
         >

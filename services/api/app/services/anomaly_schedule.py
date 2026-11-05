@@ -15,6 +15,7 @@ logger = logging.getLogger("weatheriq")
 SCHEDULE_KEY = "anomaly_schedule"
 INTERVAL = timedelta(days=1)
 RETRY = timedelta(hours=1)
+STARTUP_DELAY = timedelta(minutes=5)
 
 
 def seconds_until_due(now: datetime, last_run: datetime | None, interval: timedelta = INTERVAL) -> float:
@@ -82,6 +83,12 @@ def run_if_due(now: datetime | None = None) -> dict | None:
 
 
 async def anomaly_detection_loop(stop: asyncio.Event) -> None:
+    try:
+        await asyncio.wait_for(stop.wait(), timeout=STARTUP_DELAY.total_seconds())
+        return
+    except TimeoutError:
+        pass
+
     while not stop.is_set():
         try:
             delay = await asyncio.to_thread(seconds_until_next_run)
