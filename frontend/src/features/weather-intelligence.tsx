@@ -523,7 +523,8 @@ export function WeatherIntelligencePage() {
             <Button
               type="button"
               variant="secondary"
-              size="sm"
+              size="default"
+              className="shrink-0 whitespace-nowrap px-4"
               aria-expanded={ruleFormOpen}
               aria-controls="add-threshold-rule-form"
               onClick={() => (ruleFormOpen ? cancelRuleForm() : setRuleFormOpen(true))}
@@ -635,7 +636,7 @@ export function WeatherIntelligencePage() {
           {alertQuery.isLoading ? <p className="mt-4 text-sm text-muted-foreground">Loading alert history…</p> : null}
           {alertQuery.isError ? <p role="alert" className="mt-4 text-sm text-danger">Alert history could not be loaded.</p> : null}
           <div
-            className="alert-history-scroll mt-3 max-h-[210px] shrink-0 divide-y divide-border overflow-y-auto overscroll-contain"
+            className="alert-history-scroll mt-3 min-h-0 flex-1 divide-y divide-border overflow-y-auto overscroll-contain"
             role="region"
             aria-label="Alert history events"
             tabIndex={0}
