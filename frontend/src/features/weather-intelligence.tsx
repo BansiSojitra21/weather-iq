@@ -514,7 +514,7 @@ export function WeatherIntelligencePage() {
       </Card>
 
       <div className="grid items-stretch gap-4 lg:grid-cols-2">
-        <Card className="flex min-h-[520px] flex-col p-4 sm:p-5">
+        <Card className="flex flex-col p-4 sm:p-5">
           <div className="flex items-start justify-between gap-3">
             <div>
               <h2 className="font-semibold">Threshold rules</h2>
@@ -624,7 +624,7 @@ export function WeatherIntelligencePage() {
           </div>
         </Card>
 
-        <Card id="alert-history" className="flex h-full min-h-[520px] flex-col p-4 sm:p-5">
+        <Card id="alert-history" className="flex flex-col p-4 sm:p-5">
           <div className="flex items-start justify-between gap-3">
             <div>
               <h2 className="font-semibold">Alert history</h2>
@@ -635,7 +635,7 @@ export function WeatherIntelligencePage() {
           {alertQuery.isLoading ? <p className="mt-4 text-sm text-muted-foreground">Loading alert history…</p> : null}
           {alertQuery.isError ? <p role="alert" className="mt-4 text-sm text-danger">Alert history could not be loaded.</p> : null}
           <div
-            className="alert-history-scroll mt-3 min-h-0 flex-1 divide-y divide-border overflow-y-auto overscroll-contain"
+            className="alert-history-scroll mt-3 max-h-[210px] shrink-0 divide-y divide-border overflow-y-auto overscroll-contain"
             role="region"
             aria-label="Alert history events"
             tabIndex={0}
