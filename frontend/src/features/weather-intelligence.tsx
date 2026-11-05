@@ -513,8 +513,8 @@ export function WeatherIntelligencePage() {
         </p>
       </Card>
 
-      <div className="grid items-stretch gap-4 lg:grid-cols-2">
-        <Card className="h-full min-h-[520px] p-4 sm:p-5">
+      <div className="grid items-start gap-4 lg:grid-cols-2">
+        <Card className="p-4 sm:p-5">
           <div className="flex items-start justify-between gap-3">
             <div>
               <h2 className="font-semibold">Threshold rules</h2>
