@@ -513,8 +513,8 @@ export function WeatherIntelligencePage() {
         </p>
       </Card>
 
-      <div className="grid items-start gap-4 lg:grid-cols-2">
-        <Card className="p-4 sm:p-5">
+      <div className="grid items-stretch gap-4 lg:grid-cols-2">
+        <Card className="flex min-h-[520px] flex-col p-4 sm:p-5">
           <div className="flex items-start justify-between gap-3">
             <div>
               <h2 className="font-semibold">Threshold rules</h2>
@@ -589,7 +589,7 @@ export function WeatherIntelligencePage() {
             {visibleSavedRuleMessage ? <p role="status" className="text-sm text-ok">{visibleSavedRuleMessage}</p> : null}
           </form>
           <div
-            className="threshold-rules-scroll mt-3 max-h-[210px] shrink-0 divide-y divide-border overflow-y-auto overscroll-contain"
+            className="threshold-rules-scroll mt-3 min-h-0 flex-1 divide-y divide-border overflow-y-auto overscroll-contain"
             role="region"
             aria-label="Threshold rules list"
             tabIndex={0}
