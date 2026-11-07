@@ -45,34 +45,20 @@ def test_missing_snapshot_is_returned_without_waiting_for_weather_provider(clien
     assert refreshes == [location.id]
 
 
-def test_weather_refresh_scheduler_does_not_wait_for_provider(monkeypatch):
-    import asyncio
-
+def test_weather_refresh_scheduler_runs_refresh_and_applies_cooldown(monkeypatch):
     from app.api import routes
 
-    started = asyncio.Event()
-    release = asyncio.Event()
     location_id = 99999
+    refreshes = []
 
-    async def hold_refresh(_function, _location_id):
-        started.set()
-        await release.wait()
-
-    monkeypatch.setattr(routes.asyncio, "to_thread", hold_refresh)
-    routes._REFRESH_TASKS.pop(location_id, None)
+    monkeypatch.setattr(routes, "refresh_current_snapshot", refreshes.append)
+    monkeypatch.setattr(routes, "monotonic", lambda: 1000)
     routes._REFRESH_LAST_STARTED.pop(location_id, None)
 
-    async def verify_refresh_is_detached():
-        await routes._schedule_current_refresh(location_id)
-        task = routes._REFRESH_TASKS[location_id]
-        await started.wait()
-        assert not task.done()
-        release.set()
-        await task
+    routes._schedule_current_refresh(location_id)
+    routes._schedule_current_refresh(location_id)
 
-    asyncio.run(verify_refresh_is_detached())
-
-    assert location_id not in routes._REFRESH_TASKS
+    assert refreshes == [location_id]
 
 
 def test_missing_forecast_is_refreshed_when_current_snapshot_is_fresh(client, database, monkeypatch):

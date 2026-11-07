@@ -77,6 +77,10 @@ Backend settings use the `WEATHERIQ_` environment variable prefix. Common settin
 
 The Next.js server uses `API_INTERNAL_BASE_URL` for the FastAPI base URL, including `/api/v1`, and `WEATHERIQ_API_KEY` to authenticate write requests. For deployment, use a persistent database and configure matching API keys in the API and frontend environments. Do not use the local development key in production.
 
+## Weather refresh behavior
+
+The selected city is saved in each browser's local storage, so different browsers can show different cities on the same deployment. The dashboard checks its selected city's current weather every 30 minutes while open, and the API refreshes a snapshot when it is older than `WEATHERIQ_CACHE_TTL_MINUTES` (30 minutes by default). This is request-driven rather than a once-a-day scheduled job; keep the API on a host that completes FastAPI background tasks and use a persistent database for updated data to be shared across requests.
+
 ## Validation
 
 Run backend tests from the repository root:

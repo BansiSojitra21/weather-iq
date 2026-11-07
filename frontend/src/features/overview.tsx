@@ -93,7 +93,7 @@ export function OverviewPage() {
     refetchInterval: (query) => {
       const current = query.state.data;
       if (!current?.freshness.retrieved_at && !current?.observation) return 5_000;
-      return current?.hourly.length && current.daily.length && !needsRefresh(current) ? false : 15_000;
+      return needsRefresh(current) ? 5 * 60_000 : 30 * 60_000;
     },
     refetchIntervalInBackground: false,
   });

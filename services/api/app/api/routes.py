@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import asyncio
 import logging
 from datetime import date, datetime, time, timedelta, timezone
+from threading import Lock
 from time import monotonic
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Query, Response
@@ -38,9 +38,9 @@ from app.services.workflows import accept_weather_event, pending_alerts, record_
 router = APIRouter(prefix="/api/v1")
 ALERT_SEVERITIES = {"info", "watch", "warning", "low", "moderate", "high", "critical"}
 logger = logging.getLogger(__name__)
-_REFRESH_TASKS: dict[int, asyncio.Task[None]] = {}
 _REFRESH_LAST_STARTED: dict[int, float] = {}
 _REFRESH_COOLDOWN_SECONDS = 300
+_REFRESH_LOCK = Lock()
 
 
 class LocationIn(BaseModel):
@@ -162,24 +162,17 @@ def _location(session: Session, location_id: int) -> Location:
     return location
 
 
-async def _schedule_current_refresh(location_id: int) -> None:
-    task = _REFRESH_TASKS.get(location_id)
-    if task is not None and not task.done():
-        return
-    now = monotonic()
-    if now - _REFRESH_LAST_STARTED.get(location_id, 0) < _REFRESH_COOLDOWN_SECONDS:
-        return
-    _REFRESH_LAST_STARTED[location_id] = now
+def _schedule_current_refresh(location_id: int) -> None:
+    with _REFRESH_LOCK:
+        now = monotonic()
+        if now - _REFRESH_LAST_STARTED.get(location_id, 0) < _REFRESH_COOLDOWN_SECONDS:
+            return
+        _REFRESH_LAST_STARTED[location_id] = now
 
-    async def refresh() -> None:
-        try:
-            await asyncio.to_thread(refresh_current_snapshot, location_id)
-        except Exception:
-            logger.exception("Background weather refresh failed for location_id=%s", location_id)
-        finally:
-            _REFRESH_TASKS.pop(location_id, None)
-
-    _REFRESH_TASKS[location_id] = asyncio.create_task(refresh())
+    try:
+        refresh_current_snapshot(location_id)
+    except Exception:
+        logger.exception("Background weather refresh failed for location_id=%s", location_id)
 
 
 @router.get("/health")
