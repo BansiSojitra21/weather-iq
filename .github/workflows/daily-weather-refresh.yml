@@ -11,7 +11,7 @@ permissions:
 jobs:
   refresh:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 30
     steps:
       - name: Refresh current weather and forecasts
         env:
@@ -33,37 +33,52 @@ jobs:
           import urllib.request
 
           base_url = os.environ["WEATHER_API_BASE_URL"].rstrip("/")
-          request = urllib.request.Request(
-              f"{base_url}/ingestion/run",
-              data=json.dumps({"kinds": ["current", "forecast"]}).encode(),
-              headers={
-                  "Accept": "application/json",
-                  "Content-Type": "application/json",
-                  "X-API-Key": os.environ["WEATHERIQ_API_KEY"],
-              },
-              method="POST",
-          )
+          headers = {
+              "Accept": "application/json",
+              "Content-Type": "application/json",
+              "X-API-Key": os.environ["WEATHERIQ_API_KEY"],
+          }
+
+          def request_json(url, *, data=None):
+              request = urllib.request.Request(url, data=data, headers=headers, method="POST" if data else "GET")
+              with urllib.request.urlopen(request, timeout=180) as response:
+                  return json.load(response)
 
           try:
-              with urllib.request.urlopen(request, timeout=240) as response:
-                  result = json.load(response)
+              locations = request_json(f"{base_url}/locations").get("items")
           except urllib.error.HTTPError as error:
               body = error.read().decode("utf-8", errors="replace")
-              raise SystemExit(f"Weather refresh failed (HTTP {error.code}): {body}") from error
+              raise SystemExit(f"Could not list locations (HTTP {error.code}): {body}") from error
           except (urllib.error.URLError, TimeoutError) as error:
-              raise SystemExit(f"Could not reach the weather API: {error}") from error
+              raise SystemExit(f"Could not reach the weather API to list locations: {error}") from error
 
-          runs = result.get("runs")
-          if not isinstance(runs, list):
-              raise SystemExit(f"Unexpected API response: {result}")
+          if not isinstance(locations, list) or not locations:
+              raise SystemExit("The weather API returned no configured locations.")
 
-          failures = [
-              (run.get("location_id"), kind, details["error"])
-              for run in runs
-              for kind, details in run.get("kinds", {}).items()
-              if isinstance(details, dict) and "error" in details
-          ]
-          print(json.dumps(result, indent=2))
+          failures = []
+          for location in locations:
+              location_id = location["id"]
+              try:
+                  result = request_json(
+                      f"{base_url}/ingestion/run",
+                      data=json.dumps(
+                          {"location_id": location_id, "kinds": ["current", "forecast"]}
+                      ).encode(),
+                  )
+                  runs = result.get("runs")
+                  if not isinstance(runs, list):
+                      raise ValueError(f"Unexpected API response: {result}")
+                  for run in runs:
+                      for kind, details in run.get("kinds", {}).items():
+                          if isinstance(details, dict) and "error" in details:
+                              failures.append((location_id, kind, details["error"]))
+                  print(f"Refreshed {location.get('name', location_id)}: {json.dumps(result)}")
+              except urllib.error.HTTPError as error:
+                  body = error.read().decode("utf-8", errors="replace")
+                  failures.append((location_id, "request", f"HTTP {error.code}: {body}"))
+              except (urllib.error.URLError, TimeoutError, ValueError) as error:
+                  failures.append((location_id, "request", str(error)))
+
           if failures:
               for location_id, kind, message in failures:
                   print(f"::error::Location {location_id} {kind} refresh failed: {message}")
