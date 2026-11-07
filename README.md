@@ -81,7 +81,19 @@ The Next.js server uses `API_INTERNAL_BASE_URL` for the FastAPI base URL, includ
 
 The selected city is saved in each browser's local storage, so different browsers can show different cities on the same deployment. The dashboard checks its selected city's current weather every 30 minutes while open, and the API refreshes a snapshot when it is older than `WEATHERIQ_CACHE_TTL_MINUTES` (30 minutes by default).
 
-The GitHub Actions workflow at `.github/workflows/daily-weather-refresh.yml` requests a current-weather and forecast refresh for each configured location, one at a time, every day at 06:00 India time (00:30 UTC). Per-location requests avoid timing out while refreshing the whole catalog in one API call. The API honors the weather provider's `Retry-After` response and backs off on rate limits; the workflow stops after a rate limit rather than continuing to send requests for every city. To enable it:
+The GitHub Actions workflow at `.github/workflows/daily-weather-refresh.yml` requests a current-weather and forecast refresh for each configured location, one at a time, every day at 06:00 India time (00:30 UTC). Per-location requests avoid timing out while refreshing the whole catalog in one API call. The API honors the weather provider's `Retry-After` response and backs off on rate limits; the workflow stops after a rate limit rather than continuing to send requests for every city.
+
+Open-Meteo documents that shared hosting IPs, including Render, may be rate-limited earlier and suggests Cloudflare Workers. The optional key-protected proxy in `cloudflare/open-meteo-worker.js` forwards only forecast requests. To use it:
+
+1. Push the repository changes so Render deploys the updated API.
+2. In Cloudflare, open **Workers & Pages → Create → Create Worker**, deploy a Worker, then choose **Edit code**. Replace the starter code with `cloudflare/open-meteo-worker.js` and deploy it. Copy the Worker URL, such as `https://weatheriq-proxy.<your-account>.workers.dev`.
+3. In the Worker **Settings → Variables and Secrets**, add a secret named `WEATHERIQ_PROXY_KEY`. Generate a strong value locally (for example, `python -c "import secrets; print(secrets.token_urlsafe(32))"`); do not put it in GitHub or source code.
+4. In Render's API service **Environment**, set `WEATHERIQ_FORECAST_URL` to `https://<your-worker>.<your-account>.workers.dev/v1/forecast` and `WEATHERIQ_FORECAST_PROXY_KEY` to the exact same secret value. Save and wait for the API to redeploy.
+5. Run **Actions → Daily Weather Refresh → Run workflow** once. Check its log for `Processed <city>` entries without HTTP 429 errors.
+
+The Worker endpoint rejects requests without the key. Cloudflare's Free Workers plan currently includes 100,000 Worker requests per day; limits and plan details can change. This routes forecast requests away from Render's shared outbound IP, but cannot guarantee availability if Open-Meteo rate-limits the Worker too.
+
+To enable the daily GitHub Actions workflow:
 
 1. Push the workflow to the repository's default branch.
 2. In GitHub, open **Settings → Secrets and variables → Actions → Variables**, then create `WEATHER_API_BASE_URL` with the public API service URL ending in `/api/v1` (not the website URL).

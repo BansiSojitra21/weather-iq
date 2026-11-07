@@ -7,7 +7,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 import httpx
 
@@ -96,6 +96,19 @@ def _retry_delay(retry_after: str | None, attempt: int, status_code: int) -> flo
     return min(8.0, 0.5 * (2**attempt))
 
 
+def _forecast_proxy_headers(url: str) -> dict[str, str]:
+    settings = get_settings()
+    proxy = urlsplit(settings.forecast_url)
+    target = urlsplit(url)
+    if (
+        settings.forecast_proxy_key
+        and proxy.hostname not in {None, "api.open-meteo.com"}
+        and target.netloc == proxy.netloc
+    ):
+        return {"X-WeatherIQ-Proxy-Key": settings.forecast_proxy_key}
+    return {}
+
+
 def parse_time(value: str | None) -> datetime | None:
     if value is None or value == "":
         return None
@@ -151,7 +164,7 @@ def fetch_json(url: str, *, ttl: timedelta, client: httpx.Client | None = None) 
     try:
         for attempt in range(MAX_RETRY_ATTEMPTS):
             try:
-                response = http.get(url)
+                response = http.get(url, headers=_forecast_proxy_headers(url))
             except (httpx.TimeoutException, httpx.TransportError) as exc:
                 last_error = exc
                 delay = min(8.0, 0.5 * (2**attempt))
