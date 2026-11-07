@@ -1,0 +1,71 @@
+name: Daily Weather Refresh
+
+on:
+  schedule:
+    - cron: "30 0 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Refresh current weather and forecasts
+        env:
+          WEATHER_API_BASE_URL: ${{ vars.WEATHER_API_BASE_URL }}
+          WEATHERIQ_API_KEY: ${{ secrets.WEATHERIQ_API_KEY }}
+        run: |
+          if [ -z "$WEATHER_API_BASE_URL" ]; then
+            echo "::error::Set the WEATHER_API_BASE_URL repository variable first."
+            exit 1
+          fi
+          if [ -z "$WEATHERIQ_API_KEY" ]; then
+            echo "::error::Set the WEATHERIQ_API_KEY repository secret first."
+            exit 1
+          fi
+          python - <<'PY'
+          import json
+          import os
+          import urllib.error
+          import urllib.request
+
+          base_url = os.environ["WEATHER_API_BASE_URL"].rstrip("/")
+          request = urllib.request.Request(
+              f"{base_url}/ingestion/run",
+              data=json.dumps({"kinds": ["current", "forecast"]}).encode(),
+              headers={
+                  "Accept": "application/json",
+                  "Content-Type": "application/json",
+                  "X-API-Key": os.environ["WEATHERIQ_API_KEY"],
+              },
+              method="POST",
+          )
+
+          try:
+              with urllib.request.urlopen(request, timeout=240) as response:
+                  result = json.load(response)
+          except urllib.error.HTTPError as error:
+              body = error.read().decode("utf-8", errors="replace")
+              raise SystemExit(f"Weather refresh failed (HTTP {error.code}): {body}") from error
+          except (urllib.error.URLError, TimeoutError) as error:
+              raise SystemExit(f"Could not reach the weather API: {error}") from error
+
+          runs = result.get("runs")
+          if not isinstance(runs, list):
+              raise SystemExit(f"Unexpected API response: {result}")
+
+          failures = [
+              (run.get("location_id"), kind, details["error"])
+              for run in runs
+              for kind, details in run.get("kinds", {}).items()
+              if isinstance(details, dict) and "error" in details
+          ]
+          print(json.dumps(result, indent=2))
+          if failures:
+              for location_id, kind, message in failures:
+                  print(f"::error::Location {location_id} {kind} refresh failed: {message}")
+              raise SystemExit(1)
+          PY

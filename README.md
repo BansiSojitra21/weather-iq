@@ -79,7 +79,17 @@ The Next.js server uses `API_INTERNAL_BASE_URL` for the FastAPI base URL, includ
 
 ## Weather refresh behavior
 
-The selected city is saved in each browser's local storage, so different browsers can show different cities on the same deployment. The dashboard checks its selected city's current weather every 30 minutes while open, and the API refreshes a snapshot when it is older than `WEATHERIQ_CACHE_TTL_MINUTES` (30 minutes by default). This is request-driven rather than a once-a-day scheduled job; keep the API on a host that completes FastAPI background tasks and use a persistent database for updated data to be shared across requests.
+The selected city is saved in each browser's local storage, so different browsers can show different cities on the same deployment. The dashboard checks its selected city's current weather every 30 minutes while open, and the API refreshes a snapshot when it is older than `WEATHERIQ_CACHE_TTL_MINUTES` (30 minutes by default).
+
+The GitHub Actions workflow at `.github/workflows/daily-weather-refresh.yml` requests a current-weather and forecast refresh for all configured locations every day at 06:00 India time (00:30 UTC). To enable it:
+
+1. Push the workflow to the repository's default branch.
+2. In GitHub, open **Settings → Secrets and variables → Actions → Variables**, then create `WEATHER_API_BASE_URL` with the public API service URL ending in `/api/v1` (not the website URL).
+3. In **Settings → Secrets and variables → Actions → Secrets**, create `WEATHERIQ_API_KEY` with the same API key configured on the backend.
+4. Ensure the API is publicly reachable and uses persistent storage.
+5. In **Actions → Daily Weather Refresh**, select **Run workflow** to test it. Future runs are automatic.
+
+GitHub-hosted standard runners are free for public repositories. Private repositories use the included monthly Actions allowance and may incur charges if it is exceeded. Scheduled workflows run from the default branch and can be delayed during high GitHub Actions load. This scheduler wakes the deployed API only at its scheduled time; it does not require the website to be open or your computer to be on.
 
 ## Validation
 
