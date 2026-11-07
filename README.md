@@ -81,7 +81,7 @@ The Next.js server uses `API_INTERNAL_BASE_URL` for the FastAPI base URL, includ
 
 The selected city is saved in each browser's local storage, so different browsers can show different cities on the same deployment. The dashboard checks its selected city's current weather every 30 minutes while open, and the API refreshes a snapshot when it is older than `WEATHERIQ_CACHE_TTL_MINUTES` (30 minutes by default).
 
-The GitHub Actions workflow at `.github/workflows/daily-weather-refresh.yml` requests a current-weather and forecast refresh for each configured location, one at a time, every day at 06:00 India time (00:30 UTC). Per-location requests avoid timing out while refreshing the whole catalog in one API call. To enable it:
+The GitHub Actions workflow at `.github/workflows/daily-weather-refresh.yml` requests a current-weather and forecast refresh for each configured location, one at a time, every day at 06:00 India time (00:30 UTC). Per-location requests avoid timing out while refreshing the whole catalog in one API call. The API honors the weather provider's `Retry-After` response and backs off on rate limits; the workflow stops after a rate limit rather than continuing to send requests for every city. To enable it:
 
 1. Push the workflow to the repository's default branch.
 2. In GitHub, open **Settings → Secrets and variables → Actions → Variables**, then create `WEATHER_API_BASE_URL` with the public API service URL ending in `/api/v1` (not the website URL).

@@ -1,8 +1,11 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+
+import httpx
+import pytest
 
 from app.db.models import WeatherObservation
 from app.services.ingestion import upsert_observations
-from app.services.open_meteo import parse_daily_archive
+from app.services.open_meteo import fetch_json, parse_daily_archive
 
 
 def test_parse_daily_archive_cleans_rows():
@@ -25,6 +28,48 @@ def test_parse_daily_archive_cleans_rows():
     assert rows[0]["temperature_c"] == 10.5
     assert rows[1]["temperature_c"] is None
     assert rows[1]["precipitation_mm"] == 3.2
+
+
+def test_fetch_json_honors_retry_after_for_rate_limited_provider(monkeypatch):
+    url = "https://example.test/forecast"
+    responses = iter(
+        [
+            httpx.Response(429, headers={"Retry-After": "7"}, request=httpx.Request("GET", url)),
+            httpx.Response(200, json={"current": {}}, request=httpx.Request("GET", url)),
+        ]
+    )
+    delays = []
+
+    class Client:
+        def get(self, _url):
+            return next(responses)
+
+    monkeypatch.setattr("app.services.open_meteo._read_cache", lambda *_args: None)
+    monkeypatch.setattr("app.services.open_meteo._write_cache", lambda *_args: None)
+    monkeypatch.setattr("app.services.open_meteo.time.sleep", delays.append)
+
+    assert fetch_json(url, ttl=timedelta(minutes=30), client=Client()) == {"current": {}}
+    assert delays == [7.0]
+
+
+def test_fetch_json_uses_exponential_backoff_after_rate_limit(monkeypatch):
+    url = "https://example.test/forecast"
+    responses = iter(
+        httpx.Response(429, request=httpx.Request("GET", url))
+        for _ in range(4)
+    )
+    delays = []
+
+    class Client:
+        def get(self, _url):
+            return next(responses)
+
+    monkeypatch.setattr("app.services.open_meteo._read_cache", lambda *_args: None)
+    monkeypatch.setattr("app.services.open_meteo.time.sleep", delays.append)
+
+    with pytest.raises(RuntimeError, match="HTTP 429"):
+        fetch_json(url, ttl=timedelta(minutes=30), client=Client())
+    assert delays == [10.0, 20.0, 40.0]
 
 
 def test_observation_upsert_is_idempotent(database):

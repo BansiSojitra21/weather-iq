@@ -5,6 +5,7 @@ import json
 import logging
 import time
 from datetime import datetime, timedelta, timezone
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 from urllib.parse import urlencode
 
@@ -75,6 +76,24 @@ PREVIOUS_HOURLY = [
     "precipitation_previous_day7",
 ]
 RETRY_STATUSES = {429, 500, 502, 503, 504}
+MAX_RETRY_ATTEMPTS = 4
+
+
+def _retry_delay(retry_after: str | None, attempt: int, status_code: int) -> float:
+    if retry_after:
+        try:
+            return max(0.0, float(retry_after))
+        except ValueError:
+            try:
+                retry_at = parsedate_to_datetime(retry_after)
+                if retry_at.tzinfo is None:
+                    retry_at = retry_at.replace(tzinfo=timezone.utc)
+                return max(0.0, (retry_at - datetime.now(timezone.utc)).total_seconds())
+            except (TypeError, ValueError, OverflowError):
+                pass
+    if status_code == 429:
+        return min(60.0, 10.0 * (2**attempt))
+    return min(8.0, 0.5 * (2**attempt))
 
 
 def parse_time(value: str | None) -> datetime | None:
@@ -130,28 +149,32 @@ def fetch_json(url: str, *, ttl: timedelta, client: httpx.Client | None = None) 
     http = client or httpx.Client(timeout=settings.request_timeout_seconds)
     last_error: Exception | None = None
     try:
-        for attempt in range(3):
+        for attempt in range(MAX_RETRY_ATTEMPTS):
             try:
                 response = http.get(url)
             except (httpx.TimeoutException, httpx.TransportError) as exc:
                 last_error = exc
                 delay = min(8.0, 0.5 * (2**attempt))
                 logger.warning("open_meteo_retry attempt=%s error=%s", attempt + 1, exc)
-                time.sleep(delay)
+                if attempt < MAX_RETRY_ATTEMPTS - 1:
+                    time.sleep(delay)
                 continue
             if response.status_code in RETRY_STATUSES:
                 retry_after = response.headers.get("Retry-After")
-                try:
-                    delay = min(10.0, float(retry_after)) if retry_after else min(8.0, 0.5 * (2**attempt))
-                except ValueError:
-                    delay = min(8.0, 0.5 * (2**attempt))
-                logger.warning("open_meteo_retry attempt=%s status=%s", attempt + 1, response.status_code)
-                time.sleep(delay)
+                delay = _retry_delay(retry_after, attempt, response.status_code)
+                logger.warning(
+                    "open_meteo_retry attempt=%s status=%s delay_seconds=%s",
+                    attempt + 1,
+                    response.status_code,
+                    delay,
+                )
                 last_error = httpx.HTTPStatusError(
                     f"HTTP {response.status_code}",
                     request=response.request,
                     response=response,
                 )
+                if attempt < MAX_RETRY_ATTEMPTS - 1:
+                    time.sleep(delay)
                 continue
             response.raise_for_status()
             body = response.json()

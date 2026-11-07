@@ -29,6 +29,7 @@ jobs:
           python - <<'PY'
           import json
           import os
+          import time
           import urllib.error
           import urllib.request
 
@@ -58,6 +59,7 @@ jobs:
           failures = []
           for location in locations:
               location_id = location["id"]
+              rate_limited = False
               try:
                   result = request_json(
                       f"{base_url}/ingestion/run",
@@ -72,12 +74,18 @@ jobs:
                       for kind, details in run.get("kinds", {}).items():
                           if isinstance(details, dict) and "error" in details:
                               failures.append((location_id, kind, details["error"]))
-                  print(f"Refreshed {location.get('name', location_id)}: {json.dumps(result)}")
+                              rate_limited = rate_limited or "HTTP 429" in details["error"]
+                  print(f"Processed {location.get('name', location_id)}: {json.dumps(result)}")
               except urllib.error.HTTPError as error:
                   body = error.read().decode("utf-8", errors="replace")
                   failures.append((location_id, "request", f"HTTP {error.code}: {body}"))
+                  rate_limited = error.code == 429
               except (urllib.error.URLError, TimeoutError, ValueError) as error:
                   failures.append((location_id, "request", str(error)))
+              if rate_limited:
+                  print("::warning::Weather provider rate limit reached; stopping to avoid retrying every remaining city.")
+                  break
+              time.sleep(2)
 
           if failures:
               for location_id, kind, message in failures:
