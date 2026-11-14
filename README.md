@@ -81,7 +81,7 @@ The Next.js server uses `API_INTERNAL_BASE_URL` for the FastAPI base URL, includ
 
 The selected city is saved in each browser's local storage, so different browsers can show different cities on the same deployment. The dashboard checks its selected city's current weather every 30 minutes while open, and the API refreshes a snapshot when it is older than `WEATHERIQ_CACHE_TTL_MINUTES` (30 minutes by default).
 
-The GitHub Actions workflow at `.github/workflows/daily-weather-refresh.yml` requests a current-weather and forecast refresh for each configured location, one at a time, every day at 06:00 India time (00:30 UTC). Per-location requests avoid timing out while refreshing the whole catalog in one API call. The API honors the weather provider's `Retry-After` response and backs off on rate limits; the workflow stops after a rate limit rather than continuing to send requests for every city.
+The GitHub Actions workflow at `.github/workflows/daily-weather-refresh.yml` requests a current-weather and forecast refresh for each configured location, one at a time, at 01:00 and 06:00 India time, with backup attempts at 07:00 and 08:00 India time. Backup attempts skip locations whose current weather and forecast were already refreshed after 06:00 local time that day. Per-location requests avoid timing out while refreshing the whole catalog in one API call. The API honors the weather provider's `Retry-After` response and backs off on rate limits; the workflow stops after a rate limit rather than continuing to send requests for every city.
 
 Open-Meteo documents that shared hosting IPs, including Render, may be rate-limited earlier and suggests Cloudflare Workers. The optional key-protected proxy in `cloudflare/open-meteo-worker.js` forwards only forecast requests. To use it:
 
@@ -101,7 +101,7 @@ To enable the daily GitHub Actions workflow:
 4. Ensure the API is publicly reachable and uses persistent storage.
 5. In **Actions → Daily Weather Refresh**, select **Run workflow** to test it. Future runs are automatic.
 
-GitHub-hosted standard runners are free for public repositories. Private repositories use the included monthly Actions allowance and may incur charges if it is exceeded. Scheduled workflows run from the default branch and can be delayed during high GitHub Actions load. This scheduler wakes the deployed API only at its scheduled time; it does not require the website to be open or your computer to be on.
+GitHub-hosted standard runners are free for public repositories. Private repositories use the included monthly Actions allowance and may incur charges if it is exceeded. Scheduled workflows run from the default branch and can be delayed or skipped during high GitHub Actions load; the backup attempts improve the chance of a same-morning refresh but cannot guarantee an exact run time. This scheduler wakes the deployed API only at its scheduled time; it does not require the website to be open or your computer to be on.
 
 ## Validation
 

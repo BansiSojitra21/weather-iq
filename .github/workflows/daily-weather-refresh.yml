@@ -2,7 +2,10 @@ name: Daily Weather Refresh
 
 on:
   schedule:
+    - cron: "30 19 * * *"
     - cron: "30 0 * * *"
+    - cron: "30 1 * * *"
+    - cron: "30 2 * * *"
   workflow_dispatch:
 
 permissions:
@@ -30,6 +33,8 @@ jobs:
           import json
           import os
           import time
+          from datetime import datetime
+          from zoneinfo import ZoneInfo
           import urllib.error
           import urllib.request
 
@@ -44,6 +49,27 @@ jobs:
               request = urllib.request.Request(url, data=data, headers=headers, method="POST" if data else "GET")
               with urllib.request.urlopen(request, timeout=180) as response:
                   return json.load(response)
+
+          def refreshed_today_after_six(location, payload):
+              zone = ZoneInfo(location.get("timezone") or "UTC")
+              local_now = datetime.now(zone)
+              cutoff = local_now.replace(hour=6, minute=0, second=0, microsecond=0)
+              freshness = payload.get("freshness") or {}
+              today_forecast = payload.get("today_forecast") or {}
+              timestamps = [freshness.get("retrieved_at"), today_forecast.get("retrieved_at")]
+              if not all(isinstance(value, str) for value in timestamps):
+                  return False
+              try:
+                  retrieved = [
+                      datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(zone)
+                      for value in timestamps
+                  ]
+              except ValueError:
+                  return False
+              return all(
+                  value.date() == local_now.date() and value >= cutoff
+                  for value in retrieved
+              )
 
           try:
               locations = request_json(f"{base_url}/locations").get("items")
@@ -61,6 +87,22 @@ jobs:
               location_id = location["id"]
               rate_limited = False
               try:
+                  if os.environ.get("GITHUB_EVENT_NAME") == "schedule":
+                      try:
+                          current = request_json(
+                              f"{base_url}/weather/current?location_id={location_id}"
+                          )
+                          if refreshed_today_after_six(location, current):
+                              print(
+                                  f"Skipping {location.get('name', location_id)}: "
+                                  "current weather and forecast were already refreshed after 06:00 local time."
+                              )
+                              continue
+                      except (urllib.error.URLError, TimeoutError, ValueError) as error:
+                          print(
+                              f"::warning::Could not check the latest snapshot for "
+                              f"{location.get('name', location_id)}; attempting refresh: {error}"
+                          )
                   result = request_json(
                       f"{base_url}/ingestion/run",
                       data=json.dumps(
